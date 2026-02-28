@@ -1240,6 +1240,10 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 seq = standardize(seq)
 
             mol = AllChem.MolFromSmiles(seq)
+            if mol is None:
+                msg = f"Failed to parse SMILES: {seq}"
+                raise ValueError(msg)
+            mol.UpdatePropertyCache(strict=True)
             mol = AllChem.AddHs(mol)
 
             # Set atom names
