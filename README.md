@@ -11,6 +11,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with re
 - Cherry-picked community bug fixes: [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
 - 108 new tests covering loss functions, model layers, data parsers, potentials, and output writers (all CPU-only, no checkpoint required)
 - Fixed broken v1 attention code path in `PairformerLayer` (dead branch that would crash at runtime if triggered)
+- Fixed SIGSEGV crash on ligands with invalid implicit valence ([upstream #649](https://github.com/jwohlwend/boltz/issues/649))
 
 ## Contributing to the Community Fork
 
