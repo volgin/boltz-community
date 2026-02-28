@@ -9,10 +9,12 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with re
 - `numpy<2.0` cap removed (boltz uses no numpy 1.x-only APIs)
 - `requires-python` widened to `>=3.10` (removed `<3.13` cap)
 - Cherry-picked community bug fixes: [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
+- 108 new tests covering loss functions, model layers, data parsers, potentials, and output writers (all CPU-only, no checkpoint required)
+- Fixed broken v1 attention code path in `PairformerLayer` (dead branch that would crash at runtime if triggered)
 
-## Goal
+## Contributing
 
-Stay as close to upstream as possible. When `jwohlwend/boltz` resumes activity, these changes should be submitted as PRs and this fork sunset.
+Pull requests are welcome! If you have a bug fix, test improvement, or compatibility enhancement, please open a PR. This fork is community-maintained and aims to keep Boltz accessible as the ecosystem evolves.
 
 ## Installation
 
@@ -90,9 +92,9 @@ To encourage reproducibility and facilitate comparison with other models, on top
 If you're interested in retraining the model, currently for Boltz-1 but soon for Boltz-2, see our [training instructions](docs/training.md).
 
 
-## Contributing
+## Community
 
-We welcome external contributions and are eager to engage with the community. Connect with us on our [Slack channel](https://boltz.bio/join-slack) to discuss advancements, share insights, and foster collaboration around Boltz-2.
+Connect with the upstream team on their [Slack channel](https://boltz.bio/join-slack) to discuss advancements, share insights, and foster collaboration around Boltz-2.
 
 On recent NVIDIA GPUs, Boltz leverages the acceleration provided by [NVIDIA  cuEquivariance](https://developer.nvidia.com/cuequivariance) kernels. Boltz also runs on Tenstorrent hardware thanks to a [fork](https://github.com/moritztng/tt-boltz) by Moritz Thüning.
 
