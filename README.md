@@ -12,7 +12,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with re
 - 108 new tests covering loss functions, model layers, data parsers, potentials, and output writers (all CPU-only, no checkpoint required)
 - Fixed broken v1 attention code path in `PairformerLayer` (dead branch that would crash at runtime if triggered)
 
-## Contributing
+## Contributing to the Community Fork
 
 Pull requests are welcome! If you have a bug fix, test improvement, or compatibility enhancement, please open a PR. This fork is community-maintained and aims to keep Boltz accessible as the ecosystem evolves.
 
@@ -92,9 +92,9 @@ To encourage reproducibility and facilitate comparison with other models, on top
 If you're interested in retraining the model, currently for Boltz-1 but soon for Boltz-2, see our [training instructions](docs/training.md).
 
 
-## Community
+## Contributing
 
-Connect with the upstream team on their [Slack channel](https://boltz.bio/join-slack) to discuss advancements, share insights, and foster collaboration around Boltz-2.
+We welcome external contributions and are eager to engage with the community. Connect with us on our [Slack channel](https://boltz.bio/join-slack) to discuss advancements, share insights, and foster collaboration around Boltz-2.
 
 On recent NVIDIA GPUs, Boltz leverages the acceleration provided by [NVIDIA  cuEquivariance](https://developer.nvidia.com/cuequivariance) kernels. Boltz also runs on Tenstorrent hardware thanks to a [fork](https://github.com/moritztng/tt-boltz) by Moritz Thüning.
 
