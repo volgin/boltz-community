@@ -29,7 +29,6 @@ class PairformerLayer(nn.Module):
         pairwise_head_width: int = 32,
         pairwise_num_heads: int = 4,
         post_layer_norm: bool = False,
-        v2: bool = True,
     ) -> None:
         super().__init__()
         self.token_z = token_z
@@ -123,7 +122,6 @@ class PairformerModule(nn.Module):
         pairwise_num_heads: int = 4,
         post_layer_norm: bool = False,
         activation_checkpointing: bool = False,
-        v2: bool = True,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -145,7 +143,6 @@ class PairformerModule(nn.Module):
                     pairwise_head_width,
                     pairwise_num_heads,
                     post_layer_norm,
-                    v2,
                 ),
             )
 

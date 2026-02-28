@@ -91,7 +91,6 @@ class ConfidenceModule(nn.Module):
                 cutoff_min=conditioning_cutoff_min,
                 cutoff_max=conditioning_cutoff_max,
             )
-        pairformer_args["v2"] = True
         self.pairformer_stack = PairformerModule(
             token_s,
             token_z,

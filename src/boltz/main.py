@@ -85,7 +85,6 @@ class PairformerArgsV2:
     dropout: float = 0.0
     activation_checkpointing: bool = False
     offload_to_cpu: bool = False
-    v2: bool = True
 
 
 @dataclass
