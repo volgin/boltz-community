@@ -33,8 +33,6 @@ def _run_boltz_predict(input_yaml, input_filename, tmpdir, extra_args=None):
         "--out_dir", output_dir,
         "--recycling_steps", "1",
         "--diffusion_samples", "1",
-        "--no_write_full_pae",
-        "--no_write_full_pde",
     ]
     if extra_args:
         cmd.extend(extra_args)
