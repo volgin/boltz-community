@@ -60,7 +60,6 @@ def to_mmcif(
         sequences[entity] = sequence
 
     # Create entity objects
-    lig_entity = None
     entities_map = {}
     for entity, sequence in sequences.items():
         mol_type = entity_to_moltype[entity]
@@ -81,18 +80,11 @@ def to_mmcif(
             alphabet = {}
             chem_comp = lambda x: ihm.NonPolymerChemComp(id=x)  # noqa: E731
 
-        # Handle smiles
-        if len(sequence) == 1 and (sequence[0] == "LIG"):
-            if lig_entity is None:
-                seq = [chem_comp(sequence[0])]
-                lig_entity = Entity(seq)
-            model_e = lig_entity
-        else:
-            seq = [
-                alphabet[item] if item in alphabet else chem_comp(item)
-                for item in sequence
-            ]
-            model_e = Entity(seq)
+        seq = [
+            alphabet[item] if item in alphabet else chem_comp(item)
+            for item in sequence
+        ]
+        model_e = Entity(seq)
 
         for chain in entity_to_chains[entity]:
             chain_idx = chain["asym_id"]

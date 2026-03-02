@@ -855,6 +855,11 @@ def parse_mmcif(  # noqa: C901, PLR0915, PLR0912
         assembly_name = structure.assemblies[0].name
         structure.transform_to_assembly(assembly_name, how=how)
 
+    # Guard against CIF files with no models (e.g. header-only entries)
+    if len(structure) == 0:
+        msg = f"CIF file {path} contains no models"
+        raise ValueError(msg)
+
     # Parse entities
     # Create mapping from subchain id to entity
     entities: dict[str, gemmi.Entity] = {}

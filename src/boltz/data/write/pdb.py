@@ -87,9 +87,7 @@ def to_pdb(
                 charge = ""
                 residue_index = residue["res_idx"] + 1
                 pos = atom_coords[i]
-                res_name_3 = (
-                    "LIG" if record_type == "HETATM" else str(residue["name"][:3])
-                )
+                res_name_3 = str(residue["name"][:3])
 
                 if record_type != "HETATM":
                     # The current residue plddt is stored at the res_num index unless a ligand has previouly been added.

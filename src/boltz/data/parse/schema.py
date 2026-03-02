@@ -341,6 +341,7 @@ def compute_geometry_constraints(mol: Mol, idx_map):
 
 def compute_chiral_atom_constraints(mol, idx_map):
     constraints = []
+    Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
     if all([atom.HasProp("_CIPRank") for atom in mol.GetAtoms()]):
         for center_idx, orientation in Chem.FindMolChiralCenters(
             mol, includeUnassigned=False
@@ -1210,11 +1211,12 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                         print("WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, which "
                               "was the maximum during training, therefore the affinity output might be inaccurate.")
 
-                # Parse residue
+                # Parse residue (drop leaving atoms for multi-CCD ligands)
                 residue = parse_ccd_residue(
                     name=code,
                     ref_mol=ref_mol,
                     res_idx=res_idx,
+                    drop_leaving_atoms=len(seq) > 1,
                 )
                 residues.append(residue)
 

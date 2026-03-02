@@ -38,7 +38,7 @@ def _parse_a3m(  # noqa: C901
     seq_idx = 0
     for line in lines:
         line: str
-        line = line.strip()  # noqa: PLW2901
+        line = line.strip().replace("\x00", "")  # noqa: PLW2901
         if not line or line.startswith("#"):
             continue
 

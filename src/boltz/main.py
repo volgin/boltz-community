@@ -1,4 +1,3 @@
-import multiprocessing
 import os
 import pickle
 import platform
@@ -50,6 +49,18 @@ BOLTZ2_AFFINITY_URL_WITH_FALLBACK = [
     "https://model-gateway.boltz.bio/boltz2_aff.ckpt",
     "https://huggingface.co/boltz-community/boltz-2/resolve/main/boltz2_aff.ckpt",
 ]
+
+
+def _available_cpu_count() -> int:
+    """Return the number of CPUs available to this process.
+
+    Respects cgroup/taskset limits on Linux via os.sched_getaffinity.
+    Falls back to os.cpu_count on macOS or on error.
+    """
+    try:
+        return len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return os.cpu_count() or 1
 
 
 @dataclass
@@ -203,14 +214,14 @@ def download_boltz2(cache: Path) -> None:
     # Download CCD
     mols = cache / "mols"
     tar_mols = cache / "mols.tar"
-    if not tar_mols.exists():
-        click.echo(
-            f"Downloading the CCD data to {tar_mols}. "
-            "This may take a bit of time. You may change the cache directory "
-            "with the --cache flag."
-        )
-        urllib.request.urlretrieve(MOL_URL, str(tar_mols))  # noqa: S310
     if not mols.exists():
+        if not tar_mols.exists():
+            click.echo(
+                f"Downloading the CCD data to {tar_mols}. "
+                "This may take a bit of time. You may change the cache directory "
+                "with the --cache flag."
+            )
+            urllib.request.urlretrieve(MOL_URL, str(tar_mols))  # noqa: S310
         click.echo(
             f"Extracting the CCD data to {mols}. "
             "This may take a bit of time. You may change the cache directory "
@@ -982,8 +993,8 @@ def cli() -> None:
 @click.option(
     "--preprocessing-threads",
     type=int,
-    help="The number of threads to use for preprocessing. Default is 1.",
-    default=multiprocessing.cpu_count(),
+    help="The number of threads to use for preprocessing. Default is the number of available CPUs.",
+    default=_available_cpu_count(),
 )
 @click.option(
     "--affinity_mw_correction",
