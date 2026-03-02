@@ -1,6 +1,7 @@
 # started from code from https://github.com/lucidrains/alphafold3-pytorch, MIT License, Copyright (c) 2024 Phil Wang
 
-from fairscale.nn.checkpoint.checkpoint_activations import checkpoint_wrapper
+import torch
+import torch.utils.checkpoint
 from torch import nn, sigmoid
 from torch.nn import (
     LayerNorm,
@@ -98,7 +99,6 @@ class DiffusionTransformer(Module):
         dim_single_cond=None,
         dim_pairwise=128,
         activation_checkpointing=False,
-        offload_to_cpu=False,
     ):
         """Initialize the diffusion transformer.
 
@@ -116,8 +116,6 @@ class DiffusionTransformer(Module):
             The pairwise dimension, by default 128
         activation_checkpointing : bool, optional
             Whether to use activation checkpointing, by default False
-        offload_to_cpu : bool, optional
-            Whether to offload to CPU, by default False
 
         """
         super().__init__()
@@ -126,27 +124,14 @@ class DiffusionTransformer(Module):
 
         self.layers = ModuleList()
         for _ in range(depth):
-            if activation_checkpointing:
-                self.layers.append(
-                    checkpoint_wrapper(
-                        DiffusionTransformerLayer(
-                            heads,
-                            dim,
-                            dim_single_cond,
-                            dim_pairwise,
-                        ),
-                        offload_to_cpu=offload_to_cpu,
-                    )
+            self.layers.append(
+                DiffusionTransformerLayer(
+                    heads,
+                    dim,
+                    dim_single_cond,
+                    dim_pairwise,
                 )
-            else:
-                self.layers.append(
-                    DiffusionTransformerLayer(
-                        heads,
-                        dim,
-                        dim_single_cond,
-                        dim_pairwise,
-                    )
-                )
+            )
 
     def forward(
         self,
@@ -165,15 +150,28 @@ class DiffusionTransformer(Module):
                 if prefix_cache not in model_cache:
                     model_cache[prefix_cache] = {}
                 layer_cache = model_cache[prefix_cache]
-            a = layer(
-                a,
-                s,
-                z,
-                mask=mask,
-                to_keys=to_keys,
-                multiplicity=multiplicity,
-                layer_cache=layer_cache,
-            )
+            if self.activation_checkpointing and self.training:
+                a = torch.utils.checkpoint.checkpoint(
+                    layer,
+                    a,
+                    s,
+                    z,
+                    mask,
+                    to_keys,
+                    multiplicity,
+                    layer_cache,
+                    use_reentrant=False,
+                )
+            else:
+                a = layer(
+                    a,
+                    s,
+                    z,
+                    mask=mask,
+                    to_keys=to_keys,
+                    multiplicity=multiplicity,
+                    layer_cache=layer_cache,
+                )
         return a
 
 

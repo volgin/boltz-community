@@ -5,7 +5,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with re
 ## What's different from upstream?
 
 - Dependency pins relaxed from `==` to `>=` (no code changes)
-- `fairscale` removed (dead dependency, not imported anywhere)
+- `fairscale` dependency removed — activation checkpointing replaced with PyTorch built-in `torch.utils.checkpoint`
 - `numpy<2.0` cap removed (boltz uses no numpy 1.x-only APIs)
 - `requires-python` widened to `>=3.10` (removed `<3.13` cap)
 - Cherry-picked community bug fixes: [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)

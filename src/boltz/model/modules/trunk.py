@@ -1,7 +1,7 @@
 from typing import Optional
 
 import torch
-from fairscale.nn.checkpoint.checkpoint_activations import checkpoint_wrapper
+import torch.utils.checkpoint
 from torch import Tensor, nn
 
 from boltz.data import const
@@ -128,7 +128,6 @@ class MSAModule(nn.Module):
         pairwise_num_heads: int = 4,
         activation_checkpointing: bool = False,
         use_paired_feature: bool = False,
-        offload_to_cpu: bool = False,
         subsample_msa: bool = False,
         num_subsampled_msa: int = 1024,
         **kwargs,
@@ -157,8 +156,6 @@ class MSAModule(nn.Module):
             Whether to use activation checkpointing, by default False
         use_paired_feature : bool, optional
             Whether to use the paired feature, by default False
-        offload_to_cpu : bool, optional
-            Whether to offload to CPU, by default False
 
         """
         super().__init__()
@@ -175,33 +172,19 @@ class MSAModule(nn.Module):
             msa_s,
             bias=False,
         )
+        self.activation_checkpointing = activation_checkpointing
         self.layers = nn.ModuleList()
         for i in range(msa_blocks):
-            if activation_checkpointing:
-                self.layers.append(
-                    checkpoint_wrapper(
-                        MSALayer(
-                            msa_s,
-                            token_z,
-                            msa_dropout,
-                            z_dropout,
-                            pairwise_head_width,
-                            pairwise_num_heads,
-                        ),
-                        offload_to_cpu=offload_to_cpu,
-                    )
+            self.layers.append(
+                MSALayer(
+                    msa_s,
+                    token_z,
+                    msa_dropout,
+                    z_dropout,
+                    pairwise_head_width,
+                    pairwise_num_heads,
                 )
-            else:
-                self.layers.append(
-                    MSALayer(
-                        msa_s,
-                        token_z,
-                        msa_dropout,
-                        z_dropout,
-                        pairwise_head_width,
-                        pairwise_num_heads,
-                    )
-                )
+            )
 
     def forward(
         self,
@@ -274,18 +257,34 @@ class MSAModule(nn.Module):
 
         # Perform MSA blocks
         for i in range(self.msa_blocks):
-            z, m = self.layers[i](
-                z,
-                m,
-                token_mask,
-                msa_mask,
-                chunk_heads_pwa,
-                chunk_size_transition_z,
-                chunk_size_transition_msa,
-                chunk_size_outer_product,
-                chunk_size_tri_attn,
-                use_kernels=use_kernels,
-            )
+            if self.activation_checkpointing and self.training:
+                z, m = torch.utils.checkpoint.checkpoint(
+                    self.layers[i],
+                    z,
+                    m,
+                    token_mask,
+                    msa_mask,
+                    chunk_heads_pwa,
+                    chunk_size_transition_z,
+                    chunk_size_transition_msa,
+                    chunk_size_outer_product,
+                    chunk_size_tri_attn,
+                    use_reentrant=False,
+                    use_kernels=use_kernels,
+                )
+            else:
+                z, m = self.layers[i](
+                    z,
+                    m,
+                    token_mask,
+                    msa_mask,
+                    chunk_heads_pwa,
+                    chunk_size_transition_z,
+                    chunk_size_transition_msa,
+                    chunk_size_outer_product,
+                    chunk_size_tri_attn,
+                    use_kernels=use_kernels,
+                )
         return z
 
 
@@ -436,7 +435,6 @@ class PairformerModule(nn.Module):
         activation_checkpointing: bool = False,
         no_update_s: bool = False,
         no_update_z: bool = False,
-        offload_to_cpu: bool = False,
         **kwargs,
     ) -> None:
         """Initialize the Pairformer module.
@@ -463,8 +461,6 @@ class PairformerModule(nn.Module):
             Whether to update the single embeddings, by default False
         no_update_z : bool, optional
             Whether to update the pairwise embeddings, by default False
-        offload_to_cpu : bool, optional
-            Whether to offload to CPU, by default False
 
         """
         super().__init__()
@@ -472,38 +468,22 @@ class PairformerModule(nn.Module):
         self.num_blocks = num_blocks
         self.dropout = dropout
         self.num_heads = num_heads
+        self.activation_checkpointing = activation_checkpointing
 
         self.layers = nn.ModuleList()
         for i in range(num_blocks):
-            if activation_checkpointing:
-                self.layers.append(
-                    checkpoint_wrapper(
-                        PairformerLayer(
-                            token_s,
-                            token_z,
-                            num_heads,
-                            dropout,
-                            pairwise_head_width,
-                            pairwise_num_heads,
-                            no_update_s,
-                            False if i < num_blocks - 1 else no_update_z,
-                        ),
-                        offload_to_cpu=offload_to_cpu,
-                    )
+            self.layers.append(
+                PairformerLayer(
+                    token_s,
+                    token_z,
+                    num_heads,
+                    dropout,
+                    pairwise_head_width,
+                    pairwise_num_heads,
+                    no_update_s,
+                    False if i < num_blocks - 1 else no_update_z,
                 )
-            else:
-                self.layers.append(
-                    PairformerLayer(
-                        token_s,
-                        token_z,
-                        num_heads,
-                        dropout,
-                        pairwise_head_width,
-                        pairwise_num_heads,
-                        no_update_s,
-                        False if i < num_blocks - 1 else no_update_z,
-                    )
-                )
+            )
 
     def forward(
         self,
@@ -543,14 +523,26 @@ class PairformerModule(nn.Module):
             chunk_size_tri_attn = None
 
         for layer in self.layers:
-            s, z = layer(
-                s,
-                z,
-                mask,
-                pair_mask,
-                chunk_size_tri_attn,
-                use_kernels=use_kernels,
-            )
+            if self.activation_checkpointing and self.training:
+                s, z = torch.utils.checkpoint.checkpoint(
+                    layer,
+                    s,
+                    z,
+                    mask,
+                    pair_mask,
+                    chunk_size_tri_attn,
+                    use_reentrant=False,
+                    use_kernels=use_kernels,
+                )
+            else:
+                s, z = layer(
+                    s,
+                    z,
+                    mask,
+                    pair_mask,
+                    chunk_size_tri_attn,
+                    use_kernels=use_kernels,
+                )
         return s, z
 
 

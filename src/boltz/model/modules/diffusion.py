@@ -60,7 +60,6 @@ class DiffusionModule(Module):
         atom_feature_dim: int = 128,
         conditioning_transition_layers: int = 2,
         activation_checkpointing: bool = False,
-        offload_to_cpu: bool = False,
         **kwargs,
     ) -> None:
         """Initialize the diffusion module.
@@ -101,8 +100,6 @@ class DiffusionModule(Module):
             The number of transition layers for conditioning, by default 2.
         activation_checkpointing : bool, optional
             Whether to use activation checkpointing, by default False.
-        offload_to_cpu : bool, optional
-            Whether to offload the activations to CPU, by default False.
 
         """
         super().__init__()
@@ -149,7 +146,6 @@ class DiffusionModule(Module):
             depth=token_transformer_depth,
             heads=token_transformer_heads,
             activation_checkpointing=activation_checkpointing,
-            offload_to_cpu=offload_to_cpu,
         )
 
         self.a_norm = nn.LayerNorm(2 * token_s)
