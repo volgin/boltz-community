@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   cpu-tests:
@@ -33,7 +34,7 @@ jobs:
     #   Name: gpu-t4
     runs-on: gpu-t4
     timeout-minutes: 20
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request'
 
     steps:
       - uses: actions/checkout@v4
