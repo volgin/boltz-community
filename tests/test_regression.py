@@ -11,8 +11,8 @@ import unittest
 
 from lightning_fabric import seed_everything
 
-from boltz.main import MODEL_URL
-from boltz.model.model import Boltz1
+from boltz.main import BOLTZ1_URL_WITH_FALLBACK
+from boltz.model.models.boltz1 import Boltz1
 
 import test_utils
 
@@ -26,11 +26,17 @@ class RegressionTester(unittest.TestCase):
     def setUpClass(cls):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         cache = os.path.expanduser("~/.boltz")
-        checkpoint_url = MODEL_URL
+        checkpoint_url = BOLTZ1_URL_WITH_FALLBACK[0]
         model_name = checkpoint_url.split("/")[-1]
         checkpoint = os.path.join(cache, model_name)
         if not os.path.exists(checkpoint):
-            test_utils.download_file(checkpoint_url, checkpoint)
+            for url in BOLTZ1_URL_WITH_FALLBACK:
+                try:
+                    test_utils.download_file(url, checkpoint)
+                    break
+                except Exception:
+                    if url == BOLTZ1_URL_WITH_FALLBACK[-1]:
+                        raise
 
         regression_feats_path = os.path.join(
             test_data_dir, "ligand_regression_feats.pkl"
