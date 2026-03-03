@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import pickle
 import platform
@@ -8,38 +10,22 @@ from dataclasses import asdict, dataclass
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 import click
-import torch
-from pytorch_lightning import Trainer, seed_everything
-from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.utilities import rank_zero_only
-from rdkit import Chem
-from tqdm import tqdm
-
-from boltz.data import const
-from boltz.data.module.inference import BoltzInferenceDataModule
-from boltz.data.module.inferencev2 import Boltz2InferenceDataModule
-from boltz.data.mol import load_canonicals
-from boltz.data.msa.mmseqs2 import run_mmseqs2
-from boltz.data.parse.a3m import parse_a3m
-from boltz.data.parse.csv import parse_csv
-from boltz.data.parse.fasta import parse_fasta
-from boltz.data.parse.yaml import parse_yaml
-from boltz.data.types import MSA, Manifest, Record
-from boltz.data.write.writer import BoltzAffinityWriter, BoltzWriter
-from boltz.model.models.boltz1 import Boltz1
-from boltz.model.models.boltz2 import Boltz2
 
 from importlib.metadata import version as _pkg_version
 
-# PyTorch 2.6+ defaults torch.load to weights_only=True, which rejects
-# Lightning checkpoints containing OmegaConf config objects and custom types.
-# Since boltz only loads its own checkpoints from trusted sources, restore
-# the pre-2.6 default.
-_original_torch_load = torch.load
-torch.load = lambda *a, **kw: _original_torch_load(*a, **{**kw, "weights_only": False})
+try:
+    from pytorch_lightning.utilities import rank_zero_only
+except ImportError:
+
+    def rank_zero_only(fn):  # type: ignore[misc]
+        return fn
+
+
+if TYPE_CHECKING:
+    from boltz.data.types import Manifest
 
 CCD_URL = "https://huggingface.co/boltz-community/boltz-1/resolve/main/ccd.pkl"
 MOL_URL = "https://huggingface.co/boltz-community/boltz-2/resolve/main/mols.tar"
@@ -354,6 +340,8 @@ def filter_inputs_structure(
         The manifest of the filtered input data.
 
     """
+    from boltz.data.types import Manifest
+
     # Check if existing predictions are found (only top-level prediction folders)
     pred_dir = outdir / "predictions"
     if pred_dir.exists():
@@ -400,6 +388,8 @@ def filter_inputs_affinity(
         The manifest of the filtered input data.
 
     """
+    from boltz.data.types import Manifest
+
     click.echo("Checking input data for affinity.")
 
     # Get all affinity targets
@@ -463,10 +453,13 @@ def compute_msa(
         Custom header value for API key authentication (overrides --api_key if set).
 
     """
+    from boltz.data import const
+    from boltz.data.msa.mmseqs2 import run_mmseqs2
+
     click.echo(f"Calling MSA server for target {target_id} with {len(data)} sequences")
     click.echo(f"MSA server URL: {msa_server_url}")
     click.echo(f"MSA pairing strategy: {msa_pairing_strategy}")
-    
+
     # Construct auth headers if API key header/value is provided
     auth_headers = None
     if api_key_value:
@@ -561,8 +554,12 @@ def process_input(  # noqa: C901, PLR0912, PLR0915, D103
     try:
         # Parse data
         if path.suffix.lower() in (".fa", ".fas", ".fasta"):
+            from boltz.data.parse.fasta import parse_fasta
+
             target = parse_fasta(path, ccd, mol_dir, boltz2)
         elif path.suffix.lower() in (".yml", ".yaml"):
+            from boltz.data.parse.yaml import parse_yaml
+
             target = parse_yaml(path, ccd, mol_dir, boltz2)
         elif path.is_dir():
             msg = f"Found directory {path} instead of .fasta or .yaml, skipping."
@@ -573,6 +570,13 @@ def process_input(  # noqa: C901, PLR0912, PLR0915, D103
                 "please provide a .fasta or .yaml file."
             )
             raise RuntimeError(msg)  # noqa: TRY301
+
+        from rdkit import Chem
+
+        from boltz.data import const
+        from boltz.data.parse.a3m import parse_a3m
+        from boltz.data.parse.csv import parse_csv
+        from boltz.data.types import MSA
 
         # Get target id
         target_id = target.record.id
@@ -726,6 +730,11 @@ def process_inputs(
         The manifest of the processed input data.
 
     """
+    from tqdm import tqdm
+
+    from boltz.data.mol import load_canonicals
+    from boltz.data.types import Manifest, Record
+
     # Validate mutually exclusive authentication methods
     has_basic_auth = msa_server_username and msa_server_password
     has_api_key = api_key_value is not None
@@ -1097,6 +1106,32 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     write_embeddings: bool = False,
 ) -> None:
     """Run predictions with Boltz."""
+    import torch
+    from pytorch_lightning import Trainer, seed_everything
+    from pytorch_lightning.strategies import DDPStrategy
+    from rdkit import Chem
+
+    from boltz.data import const
+    from boltz.data.module.inference import BoltzInferenceDataModule
+    from boltz.data.module.inferencev2 import Boltz2InferenceDataModule
+    from boltz.data.types import Manifest
+    from boltz.data.write.writer import BoltzAffinityWriter, BoltzWriter
+    from boltz.model.models.boltz1 import Boltz1
+    from boltz.model.models.boltz2 import Boltz2
+
+    # PyTorch 2.6+ defaults torch.load to weights_only=True, which rejects
+    # Lightning checkpoints containing OmegaConf config objects and custom types.
+    # Since boltz only loads its own checkpoints from trusted sources, restore
+    # the pre-2.6 default.
+    if not getattr(torch.load, "_boltz_patched", False):
+        _original_torch_load = torch.load
+
+        def _patched_load(*a, _orig=_original_torch_load, **kw):
+            return _orig(*a, **{**kw, "weights_only": False})
+
+        _patched_load._boltz_patched = True  # type: ignore[attr-defined]
+        torch.load = _patched_load  # type: ignore[assignment]
+
     # If cpu, write a friendly warning
     if accelerator == "cpu":
         msg = "Running on CPU, this will be slow. Consider using a GPU."

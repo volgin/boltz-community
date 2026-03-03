@@ -7,25 +7,30 @@ from pathlib import Path
 # test_kernels.py is a GPU benchmarking script, not a test module.
 collect_ignore = ["test_kernels.py"]
 
-import numpy as np
 import pytest
-import torch
 
-from boltz.data import const
-from boltz.data.types import (
-    Atom,
-    Bond,
-    Chain,
-    Connection,
-    Interface,
-    Residue,
-    Structure,
-)
+try:
+    import numpy as np
+    import torch
+
+    from boltz.data import const
+    from boltz.data.types import (
+        Atom,
+        Bond,
+        Chain,
+        Connection,
+        Interface,
+        Residue,
+        Structure,
+    )
+except ImportError:
+    pass
 
 
 @pytest.fixture
 def minimal_structure():
     """Create a minimal Structure with 1 protein chain, 3 residues (ALA/GLY/VAL), ~15 atoms."""
+    pytest.importorskip("torch")
     # --- atoms: 5 atoms per residue = 15 total ---
     coords = np.array(
         [
@@ -123,6 +128,7 @@ def minimal_structure():
 @pytest.fixture
 def minimal_structure_with_ligand(minimal_structure):
     """Extend minimal_structure with 1 NONPOLYMER chain (5 atoms)."""
+    pytest.importorskip("torch")
     # Ligand atoms
     lig_coords = np.array(
         [
@@ -227,6 +233,7 @@ A-DEF
 @pytest.fixture
 def small_feats_dict():
     """Minimal feature dict (B=1, N_tokens=8, N_atoms=16) for loss functions."""
+    pytest.importorskip("torch")
     B, N_tok, N_atom = 1, 8, 16
 
     # token_to_rep_atom: (B, N_tok, N_atom) - picks one atom per token

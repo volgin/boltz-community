@@ -5,22 +5,15 @@ from unittest.mock import patch
 
 import pytest
 
+from boltz.main import _available_cpu_count, predict
+
 
 class TestSubsampleMsaDefault:
     """The --subsample_msa CLI option must default to True."""
 
-    @pytest.fixture(autouse=True)
-    def _import_predict(self):
-        """Import predict command, skipping if heavy deps are missing."""
-        try:
-            from boltz.main import predict
-            self.predict = predict
-        except ImportError as e:
-            pytest.skip(f"Cannot import boltz.main: {e}")
-
     def test_default_is_true(self):
         """predict command's subsample_msa param defaults to True."""
-        for param in self.predict.params:
+        for param in predict.params:
             if param.name == "subsample_msa":
                 assert param.default is True, (
                     f"subsample_msa default should be True, got {param.default}"
@@ -30,7 +23,7 @@ class TestSubsampleMsaDefault:
 
     def test_is_boolean_flag_pair(self):
         """subsample_msa should support --subsample_msa / --no_subsample_msa."""
-        for param in self.predict.params:
+        for param in predict.params:
             if param.name == "subsample_msa":
                 assert param.is_flag, "subsample_msa should be a flag"
                 # Click 8.x uses secondary_opts (list); Click 7.x uses secondary (bool)
@@ -46,18 +39,9 @@ class TestSubsampleMsaDefault:
 class TestAvailableCpuCount:
     """_available_cpu_count must respect cgroup/taskset limits."""
 
-    @pytest.fixture(autouse=True)
-    def _import_helper(self):
-        """Import the helper, skipping if heavy deps are missing."""
-        try:
-            from boltz.main import _available_cpu_count
-            self._available_cpu_count = _available_cpu_count
-        except ImportError as e:
-            pytest.skip(f"Cannot import boltz.main: {e}")
-
     def test_returns_positive_int(self):
         """_available_cpu_count returns a positive integer."""
-        result = self._available_cpu_count()
+        result = _available_cpu_count()
         assert isinstance(result, int)
         assert result >= 1
 
@@ -65,10 +49,10 @@ class TestAvailableCpuCount:
         """Falls back to os.cpu_count when sched_getaffinity raises OSError."""
         if hasattr(os, "sched_getaffinity"):
             with patch("os.sched_getaffinity", side_effect=OSError("mocked")):
-                result = self._available_cpu_count()
+                result = _available_cpu_count()
         else:
             # On macOS, the fallback path is the default path
-            result = self._available_cpu_count()
+            result = _available_cpu_count()
         assert isinstance(result, int)
         assert result >= 1
 
@@ -76,24 +60,16 @@ class TestAvailableCpuCount:
         """Falls back when sched_getaffinity is absent (macOS)."""
         if hasattr(os, "sched_getaffinity"):
             with patch("os.sched_getaffinity", side_effect=AttributeError):
-                result = self._available_cpu_count()
+                result = _available_cpu_count()
         else:
             # Already exercising the fallback path on macOS
-            result = self._available_cpu_count()
+            result = _available_cpu_count()
         assert isinstance(result, int)
         assert result >= 1
 
 
 class TestDownloadBoltz2:
     """download_boltz2 must skip already-cached files."""
-
-    @pytest.fixture(autouse=True)
-    def _check_deps(self):
-        """Skip if boltz.main can't be imported."""
-        try:
-            from boltz.main import download_boltz2  # noqa: F401
-        except ImportError as e:
-            pytest.skip(f"Cannot import boltz.main: {e}")
 
     @staticmethod
     def _prefill_all_downloads(tmp_path):
