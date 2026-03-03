@@ -1,37 +1,53 @@
 # boltz-community
 
-Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with relaxed dependency pins for ecosystem compatibility.
+Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bug fixes, broader compatibility, and CI.
 
 ## What's different from upstream?
 
-- Dependency pins relaxed from `==` to `>=` (no code changes)
-- `fairscale` dependency removed — activation checkpointing replaced with PyTorch built-in `torch.utils.checkpoint`
-- `numpy<2.0` cap removed (boltz uses no numpy 1.x-only APIs)
+**Compatibility:**
+- Dependency pins relaxed from `==` to `>=`
+- `fairscale` dependency removed — replaced with PyTorch built-in `torch.utils.checkpoint`
+- `numpy<2.0` cap removed
 - `requires-python` widened to `>=3.10` (removed `<3.13` cap)
-- Cherry-picked community bug fixes: [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
-- 124 new tests covering loss functions, model layers, data parsers, potentials, output writers, and bug-fix regressions (all CPU-only, no checkpoint required)
-- Fixed broken v1 attention code path in `PairformerLayer` (dead branch that would crash at runtime if triggered)
-- Fixed SIGSEGV crash on ligands with invalid implicit valence ([upstream #649](https://github.com/jwohlwend/boltz/issues/649))
-- Fixed `--subsample_msa` defaulting to False instead of True ([upstream #628](https://github.com/jwohlwend/boltz/issues/628))
-- Fixed 2-char elements (Ca, Fe, Br, Cl) misidentified in PDB/mmCIF output ([upstream #458](https://github.com/jwohlwend/boltz/issues/458)) — added `element` field to `AtomV2` dtype
-- Fixed atom name overflow (>4 chars) crashing ligand processing for large molecules ([upstream #494](https://github.com/jwohlwend/boltz/issues/494))
+- Compatible with PyTorch 2.6+ and Lightning 2.6+
 
-## Contributing to the Community Fork
+**Bug fixes:**
+- Cherry-picked community PRs: [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
+- Fixed broken v1 attention code path in `PairformerLayer` ([#602](https://github.com/jwohlwend/boltz/pull/602))
+- Fixed SIGSEGV crash on ligands with invalid implicit valence ([#649](https://github.com/jwohlwend/boltz/issues/649))
+- Fixed `--subsample_msa` defaulting to False instead of True ([#628](https://github.com/jwohlwend/boltz/issues/628))
+- Fixed 2-char elements (Ca, Fe, Br, Cl) misidentified in PDB/mmCIF output ([#458](https://github.com/jwohlwend/boltz/issues/458))
+- Fixed atom name overflow (>4 chars) crashing large molecule processing ([#494](https://github.com/jwohlwend/boltz/issues/494))
+- Fixed null bytes in A3M files crashing MSA parsing ([#509](https://github.com/jwohlwend/boltz/issues/509))
+- Fixed bfloat16 dtype mismatch in potentials ([#625](https://github.com/jwohlwend/boltz/issues/625))
+- Fixed CCD tar re-download on every run when `mols/` already exists ([#633](https://github.com/jwohlwend/boltz/issues/633))
+- Fixed empty CIF files causing cryptic errors ([#641](https://github.com/jwohlwend/boltz/issues/641))
+- Fixed hardcoded "LIG" residue name in PDB HETATM records ([#630](https://github.com/jwohlwend/boltz/issues/630))
+- Fixed mmCIF entity deduplication for chemically distinct ligands ([#630](https://github.com/jwohlwend/boltz/issues/630))
+- Fixed chirality constraint computation missing stereo assignment ([#589](https://github.com/jwohlwend/boltz/issues/589))
+- Fixed multi-CCD ligands not dropping leaving atoms ([#631](https://github.com/jwohlwend/boltz/issues/631))
+- Fixed `--preprocessing-threads` overcommitting CPUs ([#564](https://github.com/jwohlwend/boltz/issues/564))
 
-Pull requests are welcome! If you have a bug fix, test improvement, or compatibility enhancement, please open a PR. This fork is community-maintained and aims to keep Boltz accessible as the ecosystem evolves.
+**Tests & CI:**
+- 157 tests: unit tests (CPU), smoke tests (end-to-end inference), and regression tests (golden output verification)
+- GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
+
+## Contributing
+
+Pull requests are welcome! If you have a bug fix, test improvement, or compatibility enhancement, please open a PR.
 
 ## Installation
 
 Install from GitHub:
 
 ```
-pip install "boltz-community @ git+https://github.com/volgin/boltz-community.git"
+pip install "boltz-community @ git+https://github.com/Novel-Therapeutics/boltz-community.git"
 ```
 
 With CUDA kernels:
 
 ```
-pip install "boltz-community[cuda] @ git+https://github.com/volgin/boltz-community.git"
+pip install "boltz-community[cuda] @ git+https://github.com/Novel-Therapeutics/boltz-community.git"
 ```
 
 If you are installing on CPU-only or non-CUDA GPU hardware, use the first command without `[cuda]`. Note that the CPU version is significantly slower than the GPU version.
