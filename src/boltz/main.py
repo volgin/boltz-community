@@ -32,6 +32,9 @@ from boltz.data.write.writer import BoltzAffinityWriter, BoltzWriter
 from boltz.model.models.boltz1 import Boltz1
 from boltz.model.models.boltz2 import Boltz2
 
+# Allow boltz types in torch.load (weights_only=True default since PyTorch 2.6)
+torch.serialization.add_safe_globals([Record])
+
 CCD_URL = "https://huggingface.co/boltz-community/boltz-1/resolve/main/ccd.pkl"
 MOL_URL = "https://huggingface.co/boltz-community/boltz-2/resolve/main/mols.tar"
 
