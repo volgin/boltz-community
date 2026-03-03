@@ -59,6 +59,13 @@ class RegressionTester(unittest.TestCase):
         if len(coords.shape) == 3:
             coords = coords.unsqueeze(0)
         regression_feats["feats"]["coords"] = coords
+        # Backfill keys added after the regression features were saved
+        if "cyclic_period" not in regression_feats["feats"]:
+            n_tok = regression_feats["feats"]["residue_index"].shape[-1]
+            regression_feats["feats"]["cyclic_period"] = torch.zeros(
+                1, n_tok, dtype=torch.long, device=device,
+            )
+
         for key, val in regression_feats["feats"].items():
             if hasattr(val, "to"):
                 regression_feats["feats"][key] = val.to(device)
