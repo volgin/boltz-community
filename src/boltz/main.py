@@ -33,15 +33,11 @@ from boltz.model.models.boltz1 import Boltz1
 from boltz.model.models.boltz2 import Boltz2
 
 # PyTorch 2.6+ defaults torch.load to weights_only=True, which rejects
-# Lightning checkpoints containing OmegaConf and custom types. Register
-# all types found in boltz checkpoints as safe.
-import omegaconf
-
-torch.serialization.add_safe_globals([
-    Record,
-    omegaconf.dictconfig.DictConfig,
-    omegaconf.listconfig.ListConfig,
-])
+# Lightning checkpoints containing OmegaConf config objects and custom types.
+# Since boltz only loads its own checkpoints from trusted sources, restore
+# the pre-2.6 default.
+_original_torch_load = torch.load
+torch.load = lambda *a, **kw: _original_torch_load(*a, **dict(kw, weights_only=kw.get("weights_only", False)))
 
 CCD_URL = "https://huggingface.co/boltz-community/boltz-1/resolve/main/ccd.pkl"
 MOL_URL = "https://huggingface.co/boltz-community/boltz-2/resolve/main/mols.tar"
