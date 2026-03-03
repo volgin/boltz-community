@@ -16,9 +16,9 @@ import time
 
 
 # --- Test inputs -----------------------------------------------------------
-# Each case is (name, yaml_content, extra_args).
-# All use boltz2 (default) with protein-ligand co-folding + affinity,
-# which is the primary use case.
+# Each case is (name, yaml_content).
+# Affinity cases use protein-ligand co-folding + affinity (primary use case).
+# Structure-only cases test folding without affinity prediction.
 
 # Small: 10-residue peptide + tyrosine ligand with affinity
 SMALL_PROTEIN_LIGAND = """\
@@ -70,11 +70,45 @@ properties:
       binder: L1
 """
 
-CASES = [
+# --- Structure-only inputs -------------------------------------------------
+
+# Protein-peptide: MDM2 + p53 peptide (structure only, no affinity)
+# Classic protein-peptide interaction benchmark
+PROTEIN_PEPTIDE = """\
+version: 1
+sequences:
+  - protein:
+      id: A
+      sequence: MCNTNMSVPTDGAVTTSQIPASEQETLVRPKPLLLKLLKSVGAQKDTYTMKEVLFYLGQYIMTKRLYDEKQQHIVYCSNDLLGDLFGVPSFSVKEHRKIYTMIYRNLVVVNQQESSDSGTSVSENRCHLEGGSDQKDLVQELQEEEDQKVR
+      msa: empty
+  - protein:
+      id: B
+      sequence: ETFSDLWKLLPEN
+      msa: empty
+"""
+
+# Single protein: T4 lysozyme (structure only, no ligand)
+SINGLE_PROTEIN = """\
+version: 1
+sequences:
+  - protein:
+      id: A
+      sequence: MNIFEMLRIDEGLRLKIYKDTEGYYTIGIGHLLTKSPSLNAAKSELDKAIGRNTNGVITKDEAEKLFNQDVDAAVRGILRNAKLKPVYDSLDAVRRAALINMVFQMGETGVAGFTNSLRMLQQKRWDEAAVNLAKSRWYNQTPNRAKRVITTFRTGTWDAYKNL
+      msa: empty
+"""
+
+AFFINITY_CASES = [
     ("small_protein_ligand", SMALL_PROTEIN_LIGAND),
     ("medium_protein_ligand", MEDIUM_PROTEIN_LIGAND),
     ("large_protein_ligand", LARGE_PROTEIN_LIGAND),
 ]
+
+STRUCTURE_CASES = [
+    ("protein_peptide", PROTEIN_PEPTIDE),
+    ("single_protein", SINGLE_PROTEIN),
+]
+
+CASES = AFFINITY_CASES + STRUCTURE_CASES
 
 
 def run_benchmark(name, yaml_content, tmpdir, recycling_steps=3, diffusion_samples=1):
