@@ -35,6 +35,12 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Added `--skip_bad_inputs` flag: by default `boltz predict` now aborts when any input fails processing; pass `--skip_bad_inputs` to skip bad inputs and continue with the rest
 - Deferred heavy imports (torch, rdkit, pytorch-lightning) so `boltz.main` loads instantly for CLI help and input validation
 
+**Performance (~5% faster inference on GPU):**
+- Model weights now load directly to GPU instead of CPU-then-transfer
+- Cached molecule file reads and symmetry deserialization across samples
+- Removed dead O(n_tokens × n_chains) loop in pocket distance computation
+- Tensors in diffusion sampling loop now allocated directly on GPU
+
 **Tests & CI:**
 - 170+ tests: unit tests (CPU), smoke tests (end-to-end inference), and regression tests (golden output verification)
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
