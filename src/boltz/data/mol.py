@@ -81,6 +81,9 @@ def load_all_molecules(moldir: str) -> dict[str, Mol]:
     return loaded_mols
 
 
+_symmetry_cache: dict = {}
+
+
 def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
     """Create a dictionary for the ligand symmetries.
 
@@ -97,6 +100,9 @@ def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
     """
     symmetries = {}
     for key, mol in mols.items():
+        if key in _symmetry_cache:
+            symmetries[key] = _symmetry_cache[key]
+            continue
         try:
             sym = pickle.loads(bytes.fromhex(mol.GetProp("symmetries")))  # noqa: S301
 
@@ -169,7 +175,7 @@ def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
                 planar_double_bond_index = np.empty((6, 0), dtype=np.int64)
 
             atom_names = [atom.GetProp("name") for atom in mol.GetAtoms()]
-            symmetries[key] = (
+            result = (
                 sym,
                 atom_names,
                 edge_index,
@@ -187,6 +193,8 @@ def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
                 aromatic_6_ring_index,
                 planar_double_bond_index,
             )
+            _symmetry_cache[key] = result
+            symmetries[key] = result
         except Exception as e:  # noqa: BLE001, PERF203, S110
             pass
 
