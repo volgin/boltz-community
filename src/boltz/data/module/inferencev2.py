@@ -197,6 +197,7 @@ class PredictionDataset(torch.utils.data.Dataset):
         self.tokenizer = Boltz2Tokenizer()
         self.featurizer = Boltz2Featurizer()
         self.canonicals = load_canonicals(self.mol_dir)
+        self._mol_cache: dict = {}
         self.extra_mols_dir = extra_mols_dir
         self.override_method = override_method
         self.affinity = affinity
@@ -249,7 +250,10 @@ class PredictionDataset(torch.utils.data.Dataset):
         molecules.update(input_data.extra_mols)
         mol_names = set(tokenized.tokens["res_name"].tolist())
         mol_names = mol_names - set(molecules.keys())
-        molecules.update(load_molecules(self.mol_dir, mol_names))
+        uncached = mol_names - set(self._mol_cache.keys())
+        if uncached:
+            self._mol_cache.update(load_molecules(self.mol_dir, uncached))
+        molecules.update({k: self._mol_cache[k] for k in mol_names})
 
         # Inference specific options
         options = record.inference_options
