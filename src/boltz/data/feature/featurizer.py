@@ -597,11 +597,6 @@ def process_token_features(
                         token["atom_idx"] : token["atom_idx"] + token["atom_num"]
                     ]
 
-                    # find chain and apply chain transformation
-                    for chain in data.structure.chains:
-                        if chain["asym_id"] == token["asym_id"]:
-                            break
-
                     token_dist[i] = np.min(
                         np.linalg.norm(
                             token_coords[:, None, :] - binder_coords[None, :, :],
