@@ -2160,6 +2160,9 @@ def process_contact_feature_constraints(
 class Boltz2Featurizer:
     """Boltz2 featurizer."""
 
+    def __init__(self) -> None:
+        self.sym_cache: dict[int, tuple] = {}
+
     def process(
         self,
         data: Tokenized,
@@ -2323,7 +2326,7 @@ class Boltz2Featurizer:
         # Compute symmetry features
         symmetry_features = {}
         if compute_symmetries:
-            symmetries = get_symmetries(molecules)
+            symmetries = get_symmetries(molecules, cache=self.sym_cache)
             symmetry_features = process_symmetry_features(data, symmetries)
 
         # Compute constraint features

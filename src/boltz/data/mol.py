@@ -2,6 +2,7 @@ import itertools
 import pickle
 import random
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import torch
@@ -81,16 +82,16 @@ def load_all_molecules(moldir: str) -> dict[str, Mol]:
     return loaded_mols
 
 
-_symmetry_cache: dict = {}
-
-
-def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
+def get_symmetries(mols: dict[str, Mol], cache: Optional[dict] = None) -> dict:  # noqa: PLR0912
     """Create a dictionary for the ligand symmetries.
 
     Parameters
     ----------
-    path : str
-        The path to the ligand symmetries.
+    mols : dict[str, Mol]
+        The molecules to compute symmetries for.
+    cache : dict, optional
+        If provided, cache results keyed by id(mol) to avoid redundant
+        pickle deserialization across calls.
 
     Returns
     -------
@@ -100,10 +101,11 @@ def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
     """
     symmetries = {}
     for key, mol in mols.items():
-        mol_id = id(mol)
-        if mol_id in _symmetry_cache:
-            symmetries[key] = _symmetry_cache[mol_id]
-            continue
+        if cache is not None:
+            mol_id = id(mol)
+            if mol_id in cache:
+                symmetries[key] = cache[mol_id]
+                continue
         try:
             sym = pickle.loads(bytes.fromhex(mol.GetProp("symmetries")))  # noqa: S301
 
@@ -194,7 +196,8 @@ def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
                 aromatic_6_ring_index,
                 planar_double_bond_index,
             )
-            _symmetry_cache[mol_id] = result
+            if cache is not None:
+                cache[mol_id] = result
             symmetries[key] = result
         except Exception as e:  # noqa: BLE001, PERF203, S110
             pass
