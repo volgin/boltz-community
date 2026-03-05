@@ -9,6 +9,7 @@ They are excluded from CI and must be run manually:
 import json
 import os
 import subprocess
+import sys
 import tempfile
 
 import pytest
@@ -35,7 +36,7 @@ def _run_boltz_predict(input_yaml, input_filename, tmpdir, extra_args=None):
 
     output_dir = os.path.join(tmpdir, "output")
     cmd = [
-        "python3", "-m", "boltz", "predict", input_path,
+        sys.executable, "-c", "from boltz.main import cli; cli()", "predict", input_path,
         "--out_dir", output_dir,
         "--accelerator", "mps",
         "--recycling_steps", "1",
