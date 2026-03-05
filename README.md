@@ -68,7 +68,7 @@ If you are installing on CPU-only or non-CUDA GPU hardware, use the first comman
 
 ### Apple Silicon (MPS)
 
-On Macs with Apple Silicon (M1/M2/M3/M4), you can run inference on the GPU via MPS:
+On Macs with Apple Silicon, you can run inference on the GPU via MPS:
 
 ```
 boltz predict input.yaml --accelerator mps --use_msa_server
