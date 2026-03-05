@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -111,7 +112,8 @@ STRUCTURE_CASES = [
 CASES = AFFINITY_CASES + STRUCTURE_CASES
 
 
-def run_benchmark(name, yaml_content, tmpdir, recycling_steps=3, diffusion_samples=1):
+def run_benchmark(name, yaml_content, tmpdir, recycling_steps=3, diffusion_samples=1,
+                  accelerator=None):
     """Run a single benchmark case and return timing/memory results."""
     input_path = os.path.join(tmpdir, f"{name}.yaml")
     with open(input_path, "w") as f:
@@ -119,11 +121,14 @@ def run_benchmark(name, yaml_content, tmpdir, recycling_steps=3, diffusion_sampl
 
     output_dir = os.path.join(tmpdir, f"output_{name}")
     cmd = [
-        "boltz", "predict", input_path,
+        sys.executable, "-c", "from boltz.main import cli; cli()",
+        "predict", input_path,
         "--out_dir", output_dir,
         "--recycling_steps", str(recycling_steps),
         "--diffusion_samples", str(diffusion_samples),
     ]
+    if accelerator:
+        cmd.extend(["--accelerator", accelerator])
 
     start = time.perf_counter()
     result = subprocess.run(
@@ -162,6 +167,8 @@ def get_gpu_info():
 def main():
     parser = argparse.ArgumentParser(description="Boltz-community benchmark")
     parser.add_argument("--out", default=None, help="Output JSON file path")
+    parser.add_argument("--accelerator", default=None,
+                        help="Accelerator to pass to boltz predict (e.g. gpu, mps, cpu)")
     args = parser.parse_args()
 
     gpu_info = get_gpu_info()
@@ -185,7 +192,7 @@ def main():
         for i, (name, yaml) in enumerate(CASES):
             label = f"{name} (cold start)" if i == 0 else name
             print(f"\nRunning: {label} ...")
-            r = run_benchmark(name, yaml, tmpdir)
+            r = run_benchmark(name, yaml, tmpdir, accelerator=args.accelerator)
             r["phase"] = "individual"
             r["is_cold_start"] = (i == 0)
             results.append(r)
@@ -200,6 +207,7 @@ def main():
             print(f"\nBatch run {i+1}/5 ...")
             r = run_benchmark(
                 f"batch_{i}", MEDIUM_PROTEIN_LIGAND, tmpdir,
+                accelerator=args.accelerator,
             )
             r["phase"] = "batch"
             r["batch_index"] = i

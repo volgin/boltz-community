@@ -5,6 +5,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 ## What's different from upstream?
 
 **Compatibility:**
+- Apple Silicon (MPS) support: `boltz predict --accelerator mps`
 - Dependency pins relaxed from `==` to `>=`
 - `fairscale` dependency removed — replaced with PyTorch built-in `torch.utils.checkpoint`
 - `numpy<2.0` cap removed
@@ -64,6 +65,27 @@ pip install "boltz-community[cuda] @ git+https://github.com/Novel-Therapeutics/b
 ```
 
 If you are installing on CPU-only or non-CUDA GPU hardware, use the first command without `[cuda]`. Note that the CPU version is significantly slower than the GPU version.
+
+### Apple Silicon (MPS)
+
+On Macs with Apple Silicon (M1/M2/M3/M4), you can run inference on the GPU via MPS:
+
+```
+boltz predict input.yaml --accelerator mps --use_msa_server
+```
+
+MPS mode automatically uses float32 precision and single-device execution. Performance is slower than CUDA but significantly faster than CPU.
+
+Early benchmark on an M3 MacBook Air (single data point — community testing welcome):
+
+| Case | T4 GPU (bf16) | M3 Air MPS (f32) | Ratio |
+|------|---------------|-------------------|-------|
+| 10-res peptide + ligand (affinity) | 107s | 114s | 1.1x |
+| 163-res protein + ligand (affinity) | 144s | 251s | 1.7x |
+| 260-res protein + ligand (affinity) | 193s | 383s | 2.0x |
+| 163-res protein (structure only) | 57s | 74s | 1.3x |
+
+The gap grows with protein size, likely due to attention layers scaling quadratically without bf16. If you run benchmarks on other Apple Silicon chips, please share your results in an issue!
 
 ---
 
