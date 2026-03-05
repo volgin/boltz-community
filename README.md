@@ -5,6 +5,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 ## What's different from upstream?
 
 **Compatibility:**
+- Apple Silicon (MPS) support: `boltz predict --accelerator mps`
 - Dependency pins relaxed from `==` to `>=`
 - `fairscale` dependency removed — replaced with PyTorch built-in `torch.utils.checkpoint`
 - `numpy<2.0` cap removed
