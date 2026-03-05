@@ -85,9 +85,9 @@ class TestDownloadBoltz2:
 
         self._prefill_all_downloads(tmp_path)
 
-        with patch("urllib.request.urlretrieve") as mock_retrieve:
+        with patch("boltz.main._download") as mock_download:
             download_boltz2(tmp_path)
-            mock_retrieve.assert_not_called()
+            mock_download.assert_not_called()
 
     def test_tar_downloaded_when_mols_missing(self, tmp_path):
         """When mols/ is missing, download_boltz2 must download and extract."""
@@ -96,7 +96,7 @@ class TestDownloadBoltz2:
         (tmp_path / "boltz2_conf.ckpt").write_text("fake")
         (tmp_path / "boltz2_aff.ckpt").write_text("fake")
 
-        with patch("urllib.request.urlretrieve") as mock_retrieve, \
+        with patch("boltz.main._download") as mock_download, \
              patch("tarfile.open") as mock_tarfile:
             mock_tar = mock_tarfile.return_value.__enter__.return_value
 
@@ -105,7 +105,7 @@ class TestDownloadBoltz2:
             mock_tar.extractall.side_effect = fake_extractall
 
             download_boltz2(tmp_path)
-            mock_retrieve.assert_called_once()
+            mock_download.assert_called_once()
 
 
 class TestCheckInputs:
