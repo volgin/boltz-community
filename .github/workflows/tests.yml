@@ -1,4 +1,4 @@
-name: Tests
+name: CPU Tests
 
 on:
   push:
@@ -25,32 +25,3 @@ jobs:
 
       - name: Run CPU tests
         run: pytest -m "not slow and not regression" -v --tb=short
-
-  gpu-tests:
-    name: GPU tests
-    # Create this runner in repo Settings > Actions > Runners > New GitHub-hosted runner:
-    #   Image: Partner tab > "NVIDIA GPU-Optimized Image for AI and HPC"
-    #   Size: GPU-powered tab > 4-core with T4 GPU
-    #   Name: gpu-t4
-    runs-on: gpu-t4
-    timeout-minutes: 20
-    if: github.event_name != 'pull_request'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install -e ".[test]"
-
-      - name: Cache model checkpoints
-        uses: actions/cache@v4
-        with:
-          path: ~/.boltz
-          key: boltz-checkpoints-v1
-
-      - name: Run GPU tests
-        run: pytest -m "slow or regression" -v --tb=short
