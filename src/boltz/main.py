@@ -372,9 +372,20 @@ def filter_inputs_structure(
     else:
         existing = set()
 
-    # Remove them from the input data
+    # Remove them from the input data, but keep records that need
+    # a pre_affinity npz that wasn't written (e.g. prior run failed)
     if existing and not override:
-        manifest = Manifest([r for r in manifest.records if r.id not in existing])
+        keep = []
+        for r in manifest.records:
+            if r.id not in existing:
+                keep.append(r)
+            elif r.affinity and not (
+                pred_dir / r.id / f"pre_affinity_{r.id}.npz"
+            ).exists():
+                # Prior run created the directory but failed to write
+                # the pre_affinity file needed for the affinity pass
+                keep.append(r)
+        manifest = Manifest(keep)
         msg = (
             f"Found some existing predictions ({len(existing)}), "
             f"skipping and running only the missing ones, "
@@ -415,12 +426,14 @@ def filter_inputs_affinity(
 
     click.echo("Checking input data for affinity.")
 
+    pred_dir = outdir / "predictions"
+
     # Get all affinity targets
     existing = {
         r.id
         for r in manifest.records
         if r.affinity
-        and (outdir / "predictions" / r.id / f"affinity_{r.id}.json").exists()
+        and (pred_dir / r.id / f"affinity_{r.id}.json").exists()
     }
 
     # Remove them from the input data
@@ -437,6 +450,21 @@ def filter_inputs_affinity(
     elif existing and override:
         msg = "Found existing affinity predictions, will override."
         click.echo(msg)
+
+    # Skip records whose structure prediction failed (no pre_affinity npz)
+    missing = [
+        r for r in manifest.records
+        if r.affinity
+        and not (pred_dir / r.id / f"pre_affinity_{r.id}.npz").exists()
+    ]
+    if missing:
+        missing_ids = {r.id for r in missing}
+        manifest = Manifest([r for r in manifest.records if r.id not in missing_ids])
+        click.echo(
+            f"Warning: {len(missing)} record(s) requested affinity but have no "
+            f"structure prediction (pre_affinity_*.npz missing). Skipping: "
+            f"{', '.join(r.id for r in missing)}"
+        )
 
     return manifest
 
@@ -1466,6 +1494,13 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             datamodule=data_module,
             return_predictions=False,
         )
+
+        if pred_writer.failed:
+            click.echo(
+                f"\nWarning: {pred_writer.failed} structure prediction(s) failed "
+                f"(e.g. out of memory). Affinity predictions for those records "
+                f"will be skipped."
+            )
 
     # Check if affinity predictions are needed
     if any(r.affinity for r in manifest.records):
