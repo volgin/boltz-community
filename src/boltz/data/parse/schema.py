@@ -1122,7 +1122,7 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             msa = items[0][entity_type].get("msa", 0)
             if (msa is None) or (msa == ""):
                 msa = 0
-            if msa != 0:
+            if msa not in (0, "empty"):
                 msa = str((parent / msa).resolve())
 
             # Check if all MSAs are the same within the same entity
@@ -1130,7 +1130,7 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 item_msa = item[entity_type].get("msa", 0)
                 if (item_msa is None) or (item_msa == ""):
                     item_msa = 0
-                if item_msa != 0:
+                if item_msa not in (0, "empty"):
                     item_msa = str((parent / item_msa).resolve())
 
                 if item_msa != msa:
