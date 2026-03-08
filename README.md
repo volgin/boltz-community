@@ -13,7 +13,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Compatible with PyTorch 2.6+ and Lightning 2.6+
 
 **Bug fixes:**
-- Cherry-picked community PRs: [#654](https://github.com/jwohlwend/boltz/pull/654), [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#576](https://github.com/jwohlwend/boltz/pull/576), [#538](https://github.com/jwohlwend/boltz/pull/538), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
+- Cherry-picked community PRs: [#654](https://github.com/jwohlwend/boltz/pull/654), [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#576](https://github.com/jwohlwend/boltz/pull/576), [#538](https://github.com/jwohlwend/boltz/pull/538), [#500](https://github.com/jwohlwend/boltz/pull/500), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
 - Fixed broken v1 attention code path in `PairformerLayer` ([#602](https://github.com/jwohlwend/boltz/pull/602))
 - Fixed SIGSEGV crash on ligands with invalid implicit valence ([#649](https://github.com/jwohlwend/boltz/issues/649))
 - Fixed `--subsample_msa` defaulting to False instead of True ([#628](https://github.com/jwohlwend/boltz/issues/628))
@@ -34,6 +34,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed MSA pairing keys lost when loading cached A3M files ([#627](https://github.com/jwohlwend/boltz/issues/627))
 - Fixed consecutive CA filter rejecting valid protein chains containing metal ions ([#576](https://github.com/jwohlwend/boltz/pull/576))
 - Fixed template alignment forcing gapless matches, breaking templates with indels ([#538](https://github.com/jwohlwend/boltz/pull/538))
+- Fixed relative MSA paths resolved from CWD instead of input file directory ([#500](https://github.com/jwohlwend/boltz/pull/500))
 
 **Improvements:**
 - Added `--skip_bad_inputs` flag: by default `boltz predict` now aborts when any input fails processing; pass `--skip_bad_inputs` to skip bad inputs and continue with the rest

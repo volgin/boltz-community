@@ -1,6 +1,7 @@
 """Tests for boltz.data.parse.schema — atom naming, chirality, and leaving atoms."""
 
 import re
+from pathlib import Path
 
 import pytest
 from rdkit import Chem
@@ -19,7 +20,7 @@ def _parse_ligand_smiles(smiles: str) -> StructureV2:
             {"ligand": {"id": "L1", "smiles": smiles}},
         ],
     }
-    target = parse_boltz_schema("test", schema, ccd={}, boltz_2=True)
+    target = parse_boltz_schema(Path("test.yaml"), schema, ccd={}, boltz_2=True)
     return target.structure
 
 
@@ -246,7 +247,7 @@ class TestLeavingAtoms:
             return original(*args, **kwargs)
 
         with patch("boltz.data.parse.schema.parse_ccd_residue", side_effect=spy):
-            parse_boltz_schema("test", schema, ccd=ccd, boltz_2=True)
+            parse_boltz_schema(Path("test.yaml"), schema, ccd=ccd, boltz_2=True)
 
         # Both CCD codes should have been parsed with drop_leaving_atoms=True
         assert len(calls) == 2
