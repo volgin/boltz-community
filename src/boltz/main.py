@@ -874,7 +874,7 @@ def cli() -> None:
     return
 
 
-@cli.command()
+@cli.command(context_settings={"show_default": True})
 @click.argument("data", type=click.Path(exists=True))
 @click.option(
     "--out_dir",
@@ -900,37 +900,37 @@ def cli() -> None:
 @click.option(
     "--devices",
     type=int,
-    help="The number of devices to use for prediction. Default is 1.",
+    help="The number of devices to use for prediction.",
     default=1,
 )
 @click.option(
     "--accelerator",
     type=click.Choice(["gpu", "cpu", "tpu", "mps"]),
-    help="The accelerator to use for prediction. Default is gpu.",
+    help="The accelerator to use for prediction.",
     default="gpu",
 )
 @click.option(
     "--recycling_steps",
     type=int,
-    help="The number of recycling steps to use for prediction. Default is 3.",
+    help="The number of recycling steps to use for prediction.",
     default=3,
 )
 @click.option(
     "--sampling_steps",
     type=int,
-    help="The number of sampling steps to use for prediction. Default is 200.",
+    help="The number of sampling steps to use for prediction.",
     default=200,
 )
 @click.option(
     "--diffusion_samples",
     type=int,
-    help="The number of diffusion samples to use for prediction. Default is 1.",
+    help="The number of diffusion samples to use for prediction.",
     default=1,
 )
 @click.option(
     "--max_parallel_samples",
     type=int,
-    help="The maximum number of samples to predict in parallel. Default is None.",
+    help="The maximum number of samples to predict in parallel.",
     default=5,
 )
 @click.option(
@@ -951,31 +951,31 @@ def cli() -> None:
     type=bool,
     is_flag=True,
     default=True,
-    help="Whether to dump the pae into a npz file. Default is True.",
+    help="Whether to dump the pae into a npz file.",
 )
 @click.option(
     "--write_full_pde/--no_write_full_pde",
     type=bool,
     is_flag=True,
     default=True,
-    help="Whether to dump the pde into a npz file. Default is False.",
+    help="Whether to dump the pde into a npz file.",
 )
 @click.option(
     "--output_format",
     type=click.Choice(["pdb", "mmcif"]),
-    help="The output format to use for the predictions. Default is mmcif.",
+    help="The output format to use for the predictions.",
     default="mmcif",
 )
 @click.option(
     "--num_workers",
     type=int,
-    help="The number of dataloader workers to use for prediction. Default is 2.",
+    help="The number of dataloader workers to use for prediction.",
     default=2,
 )
 @click.option(
     "--override",
     is_flag=True,
-    help="Whether to override existing found predictions. Default is False.",
+    help="Override existing found predictions.",
 )
 @click.option(
     "--skip_bad_inputs",
@@ -985,13 +985,13 @@ def cli() -> None:
 @click.option(
     "--seed",
     type=int,
-    help="Seed to use for random number generator. Default is None (no seeding).",
+    help="Seed to use for random number generator.",
     default=None,
 )
 @click.option(
     "--use_msa_server",
     is_flag=True,
-    help="Whether to use the MMSeqs2 server for MSA generation. Default is False.",
+    help="Whether to use the MMSeqs2 server for MSA generation.",
 )
 @click.option(
     "--msa_server_url",
@@ -1001,11 +1001,8 @@ def cli() -> None:
 )
 @click.option(
     "--msa_pairing_strategy",
-    type=str,
-    help=(
-        "Pairing strategy to use. Used only if --use_msa_server is set. "
-        "Options are 'greedy' and 'complete'"
-    ),
+    type=click.Choice(["greedy", "complete"]),
+    help="Pairing strategy to use. Used only if --use_msa_server is set.",
     default="greedy",
 )
 @click.option(
@@ -1035,24 +1032,24 @@ def cli() -> None:
 @click.option(
     "--use_potentials",
     is_flag=True,
-    help="Whether to use potentials for steering. Default is False.",
+    help="Whether to use potentials for steering.",
 )
 @click.option(
     "--model",
     default="boltz2",
     type=click.Choice(["boltz1", "boltz2"]),
-    help="The model to use for prediction. Default is boltz2.",
+    help="The model to use for prediction.",
 )
 @click.option(
     "--method",
     type=str,
-    help="The method to use for prediction. Default is None.",
+    help="The method to use for prediction.",
     default=None,
 )
 @click.option(
     "--preprocessing-threads",
     type=int,
-    help="The number of threads to use for preprocessing. Default is the number of available CPUs.",
+    help="The number of threads to use for preprocessing.",
     default=_available_cpu_count(),
 )
 @click.option(
@@ -1064,13 +1061,13 @@ def cli() -> None:
 @click.option(
     "--sampling_steps_affinity",
     type=int,
-    help="The number of sampling steps to use for affinity prediction. Default is 200.",
+    help="The number of sampling steps to use for affinity prediction.",
     default=200,
 )
 @click.option(
     "--diffusion_samples_affinity",
     type=int,
-    help="The number of diffusion samples to use for affinity prediction. Default is 5.",
+    help="The number of diffusion samples to use for affinity prediction.",
     default=5,
 )
 @click.option(
@@ -1082,69 +1079,69 @@ def cli() -> None:
 @click.option(
     "--max_msa_seqs",
     type=int,
-    help="The maximum number of MSA sequences to use for prediction. Default is 8192.",
+    help="The maximum number of MSA sequences to use for prediction.",
     default=8192,
 )
 @click.option(
     "--subsample_msa/--no_subsample_msa",
     default=True,
-    help="Whether to subsample the MSA. Default is True.",
+    help="Whether to subsample the MSA.",
 )
 @click.option(
     "--num_subsampled_msa",
     type=int,
-    help="The number of MSA sequences to subsample. Default is 1024.",
+    help="The number of MSA sequences to subsample.",
     default=1024,
 )
 @click.option(
     "--no_kernels",
     is_flag=True,
-    help="Whether to disable the kernels. Default False",
+    help="Whether to disable the kernels.",
 )
 @click.option(
     "--write_embeddings",
     is_flag=True,
-    help=" to dump the s and z embeddings into a npz file. Default is False.",
+    help="Whether to dump the s and z embeddings into a npz file.",
 )
 def predict(  # noqa: C901, PLR0915, PLR0912
     data: str,
     out_dir: str,
-    cache: str = "~/.boltz",
-    checkpoint: Optional[str] = None,
-    affinity_checkpoint: Optional[str] = None,
-    devices: int = 1,
-    accelerator: str = "gpu",
-    recycling_steps: int = 3,
-    sampling_steps: int = 200,
-    diffusion_samples: int = 1,
-    sampling_steps_affinity: int = 200,
-    diffusion_samples_affinity: int = 3,
-    max_parallel_samples: Optional[int] = None,
-    step_scale: Optional[float] = None,
-    write_full_pae: bool = True,
-    write_full_pde: bool = True,
-    output_format: Literal["pdb", "mmcif"] = "mmcif",
-    num_workers: int = 2,
-    override: bool = False,
-    skip_bad_inputs: bool = False,
-    seed: Optional[int] = None,
-    use_msa_server: bool = False,
-    msa_server_url: str = "https://api.colabfold.com",
-    msa_pairing_strategy: str = "greedy",
-    msa_server_username: Optional[str] = None,
-    msa_server_password: Optional[str] = None,
-    api_key_header: Optional[str] = None,
-    api_key_value: Optional[str] = None,
-    use_potentials: bool = False,
-    model: Literal["boltz1", "boltz2"] = "boltz2",
-    method: Optional[str] = None,
-    affinity_mw_correction: Optional[bool] = False,
-    preprocessing_threads: int = 1,
-    max_msa_seqs: int = 8192,
-    subsample_msa: bool = True,
-    num_subsampled_msa: int = 1024,
-    no_kernels: bool = False,
-    write_embeddings: bool = False,
+    cache: str,
+    checkpoint: Optional[str],
+    affinity_checkpoint: Optional[str],
+    devices: int,
+    accelerator: str,
+    recycling_steps: int,
+    sampling_steps: int,
+    diffusion_samples: int,
+    sampling_steps_affinity: int,
+    diffusion_samples_affinity: int,
+    max_parallel_samples: Optional[int],
+    step_scale: Optional[float],
+    write_full_pae: bool,
+    write_full_pde: bool,
+    output_format: Literal["pdb", "mmcif"],
+    num_workers: int,
+    override: bool,
+    skip_bad_inputs: bool,
+    seed: Optional[int],
+    use_msa_server: bool,
+    msa_server_url: str,
+    msa_pairing_strategy: str,
+    msa_server_username: Optional[str],
+    msa_server_password: Optional[str],
+    api_key_header: Optional[str],
+    api_key_value: Optional[str],
+    use_potentials: bool,
+    model: Literal["boltz1", "boltz2"],
+    method: Optional[str],
+    affinity_mw_correction: Optional[bool],
+    preprocessing_threads: int,
+    max_msa_seqs: int,
+    subsample_msa: bool,
+    num_subsampled_msa: int,
+    no_kernels: bool,
+    write_embeddings: bool,
 ) -> None:
     """Run predictions with Boltz."""
     import torch
