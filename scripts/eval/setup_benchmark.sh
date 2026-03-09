@@ -200,8 +200,8 @@ download_data() {
 # --- Run predictions ----------------------------------------------------------
 
 _run_boltz() {
-    PYTHONWARNINGS="ignore::DeprecationWarning:torch.utils.data._utils.pin_memory" \
-        conda run --no-capture-output -n "${CONDA_ENV}" "$@"
+    export PYTHONWARNINGS="ignore::DeprecationWarning:torch.utils.data._utils.pin_memory"
+    conda run --no-capture-output -n "${CONDA_ENV}" "$@"
 }
 
 _run_ost() {
