@@ -119,6 +119,13 @@ setup_env() {
     conda run -n "${CONDA_ENV}" pip install -e "${BENCH_DIR}/boltz-community[cuda]"
     conda run -n "${CONDA_ENV}" pip install -e "${BENCH_DIR}/boltz-community/tools/affinity-eval[dev]"
     conda run -n "${CONDA_ENV}" pip install gdown
+
+    # Patch cuequivariance_ops GPU detection: pynvml fails on consumer GPUs
+    # (e.g. RTX 4090) and silently falls back to hardcoded A6000 specs,
+    # causing Triton kernels to be tuned for the wrong GPU profile.
+    info "Patching cuequivariance_ops GPU detection..."
+    conda run -n "${CONDA_ENV}" python "${BENCH_DIR}/boltz-community/scripts/eval/patch_cuequivariance.py"
+
     ok "Boltz env '${CONDA_ENV}' ready"
 
     # --- OpenStructure conda environment (CPU evaluation) ---
