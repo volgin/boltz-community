@@ -1,0 +1,523 @@
+#!/bin/bash
+# =============================================================================
+# Boltz Benchmark Setup — WSL2 Ubuntu 24.04 + RTX 4090
+#
+# Prerequisites:
+#   - WSL2 with Ubuntu 24.04
+#   - Docker Desktop installed and WSL integration enabled
+#   - NVIDIA drivers installed on Windows (nvidia-smi works in WSL)
+#
+# Usage:
+#   # Full setup (first time)
+#   bash scripts/eval/setup_benchmark.sh setup
+#
+#   # Download eval data only
+#   bash scripts/eval/setup_benchmark.sh download
+#
+#   # Run pilot benchmark (20 targets, quick validation)
+#   bash scripts/eval/setup_benchmark.sh pilot
+#
+#   # Run full benchmark
+#   bash scripts/eval/setup_benchmark.sh full
+#
+#   # Evaluate results after predictions complete
+#   bash scripts/eval/setup_benchmark.sh evaluate
+# =============================================================================
+
+set -euo pipefail
+
+# --- Configuration -----------------------------------------------------------
+
+BENCH_DIR="${BENCH_DIR:-$HOME/boltz-benchmark}"
+CONDA_ENV="${CONDA_ENV:-boltz-bench}"
+REPO_URL="https://github.com/Novel-Therapeutics/boltz-community.git"
+EVAL_DATA_ID="1JvHlYUMINOaqPTunI9wBYrfYniKgVmxf"  # Google Drive file ID
+OST_IMAGE="registry.scicore.unibas.ch/schwede/openstructure:2.8.0"
+OST_TAG="openstructure-0.2.8"
+
+# Prediction parameters (matching Boltz-1 paper)
+RECYCLING_STEPS=10
+SAMPLING_STEPS=200
+DIFFUSION_SAMPLES=5
+SEED=42
+
+# Pilot subset size
+PILOT_N=20
+
+# --- Colors -------------------------------------------------------------------
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+info()  { echo -e "${BLUE}[INFO]${NC} $*"; }
+ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
+err()   { echo -e "${RED}[ERROR]${NC} $*"; }
+
+# --- Preflight checks --------------------------------------------------------
+
+preflight() {
+    info "Running preflight checks..."
+
+    # Check WSL
+    if ! grep -qi microsoft /proc/version 2>/dev/null; then
+        warn "Not running in WSL — some steps may differ"
+    fi
+
+    # Check NVIDIA driver
+    if ! command -v nvidia-smi &>/dev/null; then
+        err "nvidia-smi not found. Install NVIDIA drivers on Windows first."
+        exit 1
+    fi
+    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
+    GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
+    ok "GPU: ${GPU_NAME} (${GPU_MEM} MiB)"
+
+    # Check Docker
+    if ! command -v docker &>/dev/null; then
+        err "Docker not found. Install Docker Desktop and enable WSL integration."
+        exit 1
+    fi
+    if ! docker info &>/dev/null; then
+        err "Docker daemon not running. Start Docker Desktop."
+        exit 1
+    fi
+    ok "Docker is running"
+
+    # Check NVIDIA container runtime
+    if docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi &>/dev/null; then
+        ok "NVIDIA container runtime works"
+    else
+        warn "NVIDIA container runtime test failed — GPU eval may not work in Docker"
+        warn "This is OK; OpenStructure eval runs on CPU"
+    fi
+
+    # Check conda/mamba
+    if command -v conda &>/dev/null; then
+        ok "conda found: $(conda --version)"
+    elif command -v mamba &>/dev/null; then
+        ok "mamba found"
+    else
+        warn "conda/mamba not found — will try system Python"
+    fi
+}
+
+# --- Setup --------------------------------------------------------------------
+
+setup_env() {
+    info "Setting up benchmark environment at ${BENCH_DIR}"
+    mkdir -p "${BENCH_DIR}"/{data,results,evals}
+
+    # Clone or update repo
+    if [ -d "${BENCH_DIR}/boltz-community" ]; then
+        info "Updating existing repo..."
+        cd "${BENCH_DIR}/boltz-community"
+        git pull --ff-only || warn "git pull failed — using existing checkout"
+    else
+        info "Cloning boltz-community..."
+        git clone "${REPO_URL}" "${BENCH_DIR}/boltz-community"
+    fi
+
+    # Create conda environment
+    if command -v conda &>/dev/null; then
+        if conda env list | grep -q "^${CONDA_ENV} "; then
+            info "Conda env '${CONDA_ENV}' already exists"
+        else
+            info "Creating conda env '${CONDA_ENV}' with Python 3.11..."
+            conda create -n "${CONDA_ENV}" python=3.11 -y
+        fi
+        info "Installing boltz-community..."
+        conda run -n "${CONDA_ENV}" pip install -e "${BENCH_DIR}/boltz-community[cuda]"
+        conda run -n "${CONDA_ENV}" pip install -e "${BENCH_DIR}/boltz-community/tools/affinity-eval[dev]"
+        conda run -n "${CONDA_ENV}" pip install gdown  # for Google Drive download
+    else
+        info "Installing with system pip..."
+        pip install -e "${BENCH_DIR}/boltz-community[cuda]"
+        pip install -e "${BENCH_DIR}/boltz-community/tools/affinity-eval[dev]"
+        pip install gdown
+    fi
+
+    # Pull OpenStructure Docker image
+    info "Pulling OpenStructure Docker image (this may take a while)..."
+    if docker image inspect "${OST_TAG}" &>/dev/null; then
+        ok "OpenStructure image already available"
+    else
+        docker pull "${OST_IMAGE}"
+        docker tag "${OST_IMAGE}" "${OST_TAG}"
+        ok "OpenStructure image ready"
+    fi
+
+    ok "Setup complete!"
+    echo ""
+    info "Next steps:"
+    echo "  1. bash scripts/eval/setup_benchmark.sh download"
+    echo "  2. bash scripts/eval/setup_benchmark.sh pilot"
+}
+
+# --- Download eval data -------------------------------------------------------
+
+download_data() {
+    info "Downloading Boltz-1 evaluation data from Google Drive..."
+
+    ARCHIVE="${BENCH_DIR}/data/boltz_results_final.zip"
+
+    if [ -d "${BENCH_DIR}/data/boltz_results_final" ]; then
+        ok "Eval data already downloaded"
+        return
+    fi
+
+    # gdown handles Google Drive's virus scan warning for large files
+    if command -v conda &>/dev/null && conda env list | grep -q "^${CONDA_ENV} "; then
+        PYTHON="conda run -n ${CONDA_ENV} python"
+        GDOWN="conda run -n ${CONDA_ENV} gdown"
+    else
+        PYTHON="python"
+        GDOWN="gdown"
+    fi
+
+    if [ -f "${ARCHIVE}" ]; then
+        info "Archive already downloaded, extracting..."
+    else
+        info "Downloading (~2-5 GB, may take a while)..."
+        ${GDOWN} "https://drive.google.com/uc?id=${EVAL_DATA_ID}" -O "${ARCHIVE}" --fuzzy
+    fi
+
+    info "Extracting..."
+    cd "${BENCH_DIR}/data"
+    unzip -q -o "${ARCHIVE}"
+    ok "Eval data ready at ${BENCH_DIR}/data/boltz_results_final/"
+
+    # Show what we got
+    echo ""
+    info "Data contents:"
+    ls -la "${BENCH_DIR}/data/boltz_results_final/"
+
+    N_TEST=$(ls "${BENCH_DIR}/data/boltz_results_final/targets/test/" 2>/dev/null | wc -l)
+    N_CASP=$(ls "${BENCH_DIR}/data/boltz_results_final/targets/casp15/" 2>/dev/null | wc -l)
+    info "PDB test targets: ${N_TEST}"
+    info "CASP15 targets: ${N_CASP}"
+}
+
+# --- Run predictions ----------------------------------------------------------
+
+_run_cmd() {
+    if command -v conda &>/dev/null && conda env list | grep -q "^${CONDA_ENV} "; then
+        conda run --no-capture-output -n "${CONDA_ENV}" "$@"
+    else
+        "$@"
+    fi
+}
+
+_check_triton() {
+    # Check for Triton quality issue on 4090 (upstream #391)
+    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
+    if echo "${GPU_NAME}" | grep -qi "4090"; then
+        warn "RTX 4090 detected. Triton kernels may degrade prediction quality (upstream #391)."
+        warn "Disabling Triton for benchmark accuracy: BOLTZ_USE_TRITON=0"
+        export BOLTZ_USE_TRITON=0
+    fi
+}
+
+run_pilot() {
+    info "Running pilot benchmark (${PILOT_N} targets)..."
+
+    EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
+    if [ ! -d "${EVAL_DATA}/targets/test" ]; then
+        err "Eval data not found. Run: bash scripts/eval/setup_benchmark.sh download"
+        exit 1
+    fi
+
+    _check_triton
+
+    # Select a random subset of targets for the pilot
+    PILOT_DIR="${BENCH_DIR}/data/pilot_inputs"
+    mkdir -p "${PILOT_DIR}"
+
+    # Use the Boltz input files from the eval data
+    INPUT_DIR="${EVAL_DATA}/inputs/test/boltz"
+    if [ ! -d "${INPUT_DIR}" ]; then
+        err "Boltz input files not found at ${INPUT_DIR}"
+        info "Available input dirs:"
+        ls "${EVAL_DATA}/inputs/test/" 2>/dev/null || echo "  (none)"
+        exit 1
+    fi
+
+    # Copy first N inputs for the pilot
+    info "Selecting ${PILOT_N} targets for pilot..."
+    ls "${INPUT_DIR}" | head -n "${PILOT_N}" | while read -r f; do
+        cp -r "${INPUT_DIR}/${f}" "${PILOT_DIR}/" 2>/dev/null || true
+    done
+
+    ACTUAL_N=$(ls "${PILOT_DIR}" | wc -l)
+    info "Running predictions on ${ACTUAL_N} targets..."
+
+    # Run Boltz-2 (default model)
+    info "=== Boltz-2 predictions ==="
+    _run_cmd boltz predict "${PILOT_DIR}" \
+        --out_dir "${BENCH_DIR}/results/pilot_boltz2" \
+        --recycling_steps "${RECYCLING_STEPS}" \
+        --sampling_steps "${SAMPLING_STEPS}" \
+        --diffusion_samples "${DIFFUSION_SAMPLES}" \
+        --seed "${SEED}" \
+        --use_msa_server \
+        --skip_bad_inputs \
+        2>&1 | tee "${BENCH_DIR}/results/pilot_boltz2.log"
+
+    ok "Pilot Boltz-2 predictions complete"
+
+    # Run Boltz-1
+    info "=== Boltz-1 predictions ==="
+    _run_cmd boltz predict "${PILOT_DIR}" \
+        --out_dir "${BENCH_DIR}/results/pilot_boltz1" \
+        --recycling_steps "${RECYCLING_STEPS}" \
+        --sampling_steps "${SAMPLING_STEPS}" \
+        --diffusion_samples "${DIFFUSION_SAMPLES}" \
+        --seed "${SEED}" \
+        --use_msa_server \
+        --skip_bad_inputs \
+        --model boltz1 \
+        2>&1 | tee "${BENCH_DIR}/results/pilot_boltz1.log"
+
+    ok "Pilot Boltz-1 predictions complete"
+
+    echo ""
+    info "Pilot predictions saved to:"
+    echo "  Boltz-2: ${BENCH_DIR}/results/pilot_boltz2/"
+    echo "  Boltz-1: ${BENCH_DIR}/results/pilot_boltz1/"
+    echo ""
+    info "Next: bash scripts/eval/setup_benchmark.sh evaluate pilot"
+}
+
+run_full() {
+    info "Running FULL benchmark (this will take many hours)..."
+
+    EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
+    if [ ! -d "${EVAL_DATA}/targets/test" ]; then
+        err "Eval data not found. Run: bash scripts/eval/setup_benchmark.sh download"
+        exit 1
+    fi
+
+    _check_triton
+
+    INPUT_DIR="${EVAL_DATA}/inputs/test/boltz"
+
+    for MODEL in boltz2 boltz1; do
+        for DATASET in test casp15; do
+            if [ "${DATASET}" = "casp15" ]; then
+                DS_INPUT="${EVAL_DATA}/inputs/casp15/boltz"
+            else
+                DS_INPUT="${INPUT_DIR}"
+            fi
+
+            if [ ! -d "${DS_INPUT}" ]; then
+                warn "Input dir not found: ${DS_INPUT}, skipping ${DATASET}"
+                continue
+            fi
+
+            RESULT_DIR="${BENCH_DIR}/results/full_${MODEL}_${DATASET}"
+
+            if [ -d "${RESULT_DIR}" ]; then
+                warn "Results already exist at ${RESULT_DIR}, skipping"
+                warn "Delete the directory to re-run"
+                continue
+            fi
+
+            N_INPUTS=$(ls "${DS_INPUT}" | wc -l)
+            info "=== ${MODEL} on ${DATASET} (${N_INPUTS} targets) ==="
+
+            MODEL_FLAG=""
+            if [ "${MODEL}" = "boltz1" ]; then
+                MODEL_FLAG="--model boltz1"
+            fi
+
+            _run_cmd boltz predict "${DS_INPUT}" \
+                --out_dir "${RESULT_DIR}" \
+                --recycling_steps "${RECYCLING_STEPS}" \
+                --sampling_steps "${SAMPLING_STEPS}" \
+                --diffusion_samples "${DIFFUSION_SAMPLES}" \
+                --seed "${SEED}" \
+                --use_msa_server \
+                --skip_bad_inputs \
+                ${MODEL_FLAG} \
+                2>&1 | tee "${RESULT_DIR}.log"
+
+            ok "${MODEL} on ${DATASET} complete"
+        done
+    done
+
+    ok "Full benchmark predictions complete!"
+    info "Next: bash scripts/eval/setup_benchmark.sh evaluate full"
+}
+
+# --- Evaluate results ---------------------------------------------------------
+
+run_evaluate() {
+    local SCOPE="${1:-pilot}"
+    EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
+    REPO="${BENCH_DIR}/boltz-community"
+
+    info "Running OpenStructure evaluation (${SCOPE})..."
+
+    for MODEL in boltz2 boltz1; do
+        for DATASET in test casp15; do
+            if [ "${SCOPE}" = "pilot" ] && [ "${DATASET}" = "casp15" ]; then
+                continue
+            fi
+
+            if [ "${SCOPE}" = "pilot" ]; then
+                PRED_DIR="${BENCH_DIR}/results/pilot_${MODEL}"
+            else
+                PRED_DIR="${BENCH_DIR}/results/full_${MODEL}_${DATASET}"
+            fi
+
+            # Find the predictions subdirectory
+            PRED_SUBDIR=$(find "${PRED_DIR}" -name "predictions" -type d 2>/dev/null | head -1)
+            if [ -z "${PRED_SUBDIR}" ]; then
+                warn "No predictions found in ${PRED_DIR}, skipping"
+                continue
+            fi
+
+            REF_DIR="${EVAL_DATA}/targets/${DATASET}"
+            if [ ! -d "${REF_DIR}" ]; then
+                warn "Reference dir not found: ${REF_DIR}, skipping"
+                continue
+            fi
+
+            EVAL_DIR="${BENCH_DIR}/evals/${SCOPE}_${MODEL}_${DATASET}"
+            mkdir -p "${EVAL_DIR}"
+
+            info "=== Evaluating ${MODEL} on ${DATASET} ==="
+            info "  Predictions: ${PRED_SUBDIR}"
+            info "  References:  ${REF_DIR}"
+            info "  Output:      ${EVAL_DIR}"
+
+            _run_cmd python "${REPO}/scripts/eval/run_boltz_eval.py" \
+                "${PRED_SUBDIR}" \
+                "${REF_DIR}" \
+                "${EVAL_DIR}" \
+                --mount "${BENCH_DIR}" \
+                --num-samples "${DIFFUSION_SAMPLES}"
+
+            # Aggregate
+            info "Aggregating results..."
+            _run_cmd python "${REPO}/scripts/eval/aggregate_boltz_eval.py" \
+                "${PRED_SUBDIR}" \
+                "${EVAL_DIR}" \
+                --output "${BENCH_DIR}/results/${SCOPE}_${MODEL}_${DATASET}_results.csv" \
+                --num-samples "${DIFFUSION_SAMPLES}"
+
+            ok "${MODEL} on ${DATASET} evaluation complete"
+        done
+    done
+
+    # Print all summary files
+    echo ""
+    info "=========================================="
+    info "  BENCHMARK RESULTS"
+    info "=========================================="
+    for SUMMARY in "${BENCH_DIR}"/results/*_summary.csv; do
+        if [ -f "${SUMMARY}" ]; then
+            echo ""
+            info "$(basename "${SUMMARY}"):"
+            cat "${SUMMARY}"
+        fi
+    done
+}
+
+# --- Status -------------------------------------------------------------------
+
+status() {
+    info "Benchmark status:"
+    echo ""
+
+    # GPU
+    echo "GPU:"
+    nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>/dev/null \
+        || echo "  (not available)"
+    echo ""
+
+    # Docker
+    echo "Docker:"
+    if docker image inspect "${OST_TAG}" &>/dev/null; then
+        ok "OpenStructure image available"
+    else
+        warn "OpenStructure image not pulled"
+    fi
+    echo ""
+
+    # Data
+    echo "Data:"
+    if [ -d "${BENCH_DIR}/data/boltz_results_final" ]; then
+        N_TEST=$(ls "${BENCH_DIR}/data/boltz_results_final/targets/test/" 2>/dev/null | wc -l)
+        N_CASP=$(ls "${BENCH_DIR}/data/boltz_results_final/targets/casp15/" 2>/dev/null | wc -l)
+        ok "Eval data: ${N_TEST} test targets, ${N_CASP} CASP15 targets"
+    else
+        warn "Eval data not downloaded"
+    fi
+    echo ""
+
+    # Results
+    echo "Results:"
+    for DIR in "${BENCH_DIR}"/results/*/; do
+        if [ -d "${DIR}" ]; then
+            N=$(find "${DIR}" -name "*.cif" 2>/dev/null | wc -l)
+            echo "  $(basename "${DIR}"): ${N} CIF files"
+        fi
+    done
+
+    # Summaries
+    for SUMMARY in "${BENCH_DIR}"/results/*_summary.csv; do
+        if [ -f "${SUMMARY}" ]; then
+            echo "  $(basename "${SUMMARY}")"
+        fi
+    done
+}
+
+# --- Main dispatch ------------------------------------------------------------
+
+case "${1:-help}" in
+    setup)
+        preflight
+        setup_env
+        ;;
+    download)
+        download_data
+        ;;
+    pilot)
+        run_pilot
+        ;;
+    full)
+        run_full
+        ;;
+    evaluate)
+        run_evaluate "${2:-pilot}"
+        ;;
+    status)
+        status
+        ;;
+    preflight)
+        preflight
+        ;;
+    *)
+        echo "Boltz Benchmark Runner"
+        echo ""
+        echo "Usage: bash scripts/eval/setup_benchmark.sh <command>"
+        echo ""
+        echo "Commands:"
+        echo "  setup      Install dependencies, clone repo, pull Docker images"
+        echo "  download   Download Boltz-1 evaluation data from Google Drive"
+        echo "  pilot      Run pilot benchmark (${PILOT_N} targets, ~1-2 hours on 4090)"
+        echo "  full       Run full benchmark (all targets, ~1-3 days on 4090)"
+        echo "  evaluate [pilot|full]  Run OpenStructure eval on predictions"
+        echo "  status     Show current benchmark status"
+        echo "  preflight  Check system prerequisites"
+        echo ""
+        echo "Environment variables:"
+        echo "  BENCH_DIR   Benchmark working directory (default: ~/boltz-benchmark)"
+        echo "  CONDA_ENV   Conda environment name (default: boltz-bench)"
+        echo "  PILOT_N     Number of targets for pilot run (default: 20)"
+        ;;
+esac
