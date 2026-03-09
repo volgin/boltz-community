@@ -420,8 +420,15 @@ run_evaluate() {
                 PRED_DIR="${BENCH_DIR}/results/full_${MODEL}_${DATASET}"
             fi
 
-            # Find the predictions subdirectory
-            PRED_SUBDIR=$(find "${PRED_DIR}" -name "predictions" -type d 2>/dev/null | head -1)
+            # Find the predictions subdirectory (boltz creates boltz_results_<input_dir>/predictions/)
+            # Use the deepest match that actually contains prediction subdirectories
+            PRED_SUBDIR=""
+            for CANDIDATE in $(find "${PRED_DIR}" -name "predictions" -type d 2>/dev/null); do
+                if [ -n "$(ls -A "${CANDIDATE}" 2>/dev/null)" ]; then
+                    PRED_SUBDIR="${CANDIDATE}"
+                    break
+                fi
+            done
             if [ -z "${PRED_SUBDIR}" ]; then
                 warn "No predictions found in ${PRED_DIR}, skipping"
                 continue
