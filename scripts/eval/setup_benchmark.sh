@@ -55,8 +55,8 @@ PILOT_N=20
 # Dev benchmark: curated representative set (fast iteration)
 DEV_N=25
 DEV_MAX_RESIDUES=600
-DEV_SAMPLING_STEPS=50
-DEV_DIFFUSION_SAMPLES=1
+DEV_SAMPLING_STEPS=100
+DEV_DIFFUSION_SAMPLES=3
 
 # --- Colors -------------------------------------------------------------------
 
