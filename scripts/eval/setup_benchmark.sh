@@ -51,6 +51,7 @@ RECYCLING_STEPS=10
 SAMPLING_STEPS=200
 DIFFUSION_SAMPLES=5
 SEED=42
+PREPROCESSING_THREADS=4  # 32 threads can OOM on WSL2
 
 # Pilot subset size
 PILOT_N=20
@@ -294,6 +295,7 @@ run_pilot() {
         --diffusion_samples "${DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
         --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
         2>&1 | tee "${BENCH_DIR}/results/pilot_boltz2.log"
 
     ok "Pilot Boltz-2 predictions complete"
@@ -307,6 +309,7 @@ run_pilot() {
         --diffusion_samples "${DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
         --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
         --model boltz1 \
         2>&1 | tee "${BENCH_DIR}/results/pilot_boltz1.log"
 
@@ -392,6 +395,7 @@ run_dev() {
         --diffusion_samples "${DEV_DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
         --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
         2>&1 | tee "${BENCH_DIR}/results/dev_boltz2.log"
 
     ok "Dev Boltz-2 predictions complete"
@@ -405,6 +409,7 @@ run_dev() {
         --diffusion_samples "${DEV_DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
         --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
         --model boltz1 \
         2>&1 | tee "${BENCH_DIR}/results/dev_boltz1.log"
 
@@ -502,6 +507,7 @@ run_full() {
                 --diffusion_samples "${DIFFUSION_SAMPLES}" \
                 --seed "${SEED}" \
                 --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
                 ${MODEL_FLAG} \
                 2>&1 | tee "${RESULT_DIR}.log"
 
