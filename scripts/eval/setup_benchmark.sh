@@ -224,6 +224,19 @@ _run_ost() {
     conda run --no-capture-output -n "${OST_CONDA_ENV}" "$@"
 }
 
+_kill_orphans() {
+    # Kill any leftover boltz/python GPU processes from previous runs
+    local ORPHANS
+    ORPHANS=$(ps aux | grep -E '[b]oltz predict|[p]ython.*boltz' | grep -v "$$" | awk '{print $2}' || true)
+    if [ -n "${ORPHANS}" ]; then
+        for PID in ${ORPHANS}; do
+            warn "Killing orphaned process ${PID}"
+            kill "${PID}" 2>/dev/null || true
+        done
+        sleep 1
+    fi
+}
+
 _check_triton() {
     # Check for Triton quality issue on 4090 (upstream #391)
     GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
@@ -235,6 +248,7 @@ _check_triton() {
 }
 
 run_pilot() {
+    _kill_orphans
     info "Running pilot benchmark (${PILOT_N} targets)..."
 
     EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
@@ -327,6 +341,7 @@ run_pilot() {
 # --- Dev benchmark (curated representative set) ------------------------------
 
 run_dev() {
+    _kill_orphans
     info "Running DEV benchmark (${DEV_N} curated targets)..."
 
     EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
@@ -461,6 +476,7 @@ _prepare_inputs() {
 }
 
 run_full() {
+    _kill_orphans
     info "Running FULL benchmark (this will take many hours)..."
 
     EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
