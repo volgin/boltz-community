@@ -53,10 +53,11 @@ SEED=42
 PILOT_N=20
 
 # Dev benchmark: curated representative set (fast iteration)
-DEV_N=25
-DEV_MAX_RESIDUES=600
-DEV_SAMPLING_STEPS=100
-DEV_DIFFUSION_SAMPLES=3
+# Override via flags: --samples N --steps N --targets N --max-residues N
+DEV_N="${DEV_N:-25}"
+DEV_MAX_RESIDUES="${DEV_MAX_RESIDUES:-600}"
+DEV_SAMPLING_STEPS="${DEV_SAMPLING_STEPS:-100}"
+DEV_DIFFUSION_SAMPLES="${DEV_DIFFUSION_SAMPLES:-5}"
 
 # --- Colors -------------------------------------------------------------------
 
@@ -652,9 +653,24 @@ status() {
     done
 }
 
+# --- Parse flags --------------------------------------------------------------
+
+COMMAND="${1:-help}"
+shift || true
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --samples)      DEV_DIFFUSION_SAMPLES="$2"; shift 2 ;;
+        --steps)        DEV_SAMPLING_STEPS="$2"; shift 2 ;;
+        --targets)      DEV_N="$2"; shift 2 ;;
+        --max-residues) DEV_MAX_RESIDUES="$2"; shift 2 ;;
+        *)              EXTRA_ARGS+=("$1"); shift ;;
+    esac
+done
+
 # --- Main dispatch ------------------------------------------------------------
 
-case "${1:-help}" in
+case "${COMMAND}" in
     setup)
         preflight
         setup_env
@@ -672,7 +688,7 @@ case "${1:-help}" in
         run_full
         ;;
     evaluate)
-        run_evaluate "${2:-pilot}"
+        run_evaluate "${EXTRA_ARGS[0]:-pilot}"
         ;;
     status)
         status
@@ -689,16 +705,21 @@ case "${1:-help}" in
         echo "  setup      Install dependencies, create conda envs"
         echo "  download   Download Boltz-1 evaluation data from Google Drive"
         echo "  pilot      Run pilot benchmark (${PILOT_N} targets, ~1-2 hours on 4090)"
-        echo "  dev        Run dev benchmark (${DEV_N} curated targets, ~1-2 hours on 4090)"
+        echo "  dev        Run dev benchmark (${DEV_N} curated targets)"
         echo "  full       Run full benchmark (all targets, ~1-3 days on 4090)"
         echo "  evaluate [pilot|dev|full]  Run OpenStructure eval on predictions"
         echo "  status     Show current benchmark status"
         echo "  preflight  Check system prerequisites"
         echo ""
+        echo "Dev flags (use with 'dev' command):"
+        echo "  --samples N       Diffusion samples per target (default: ${DEV_DIFFUSION_SAMPLES})"
+        echo "  --steps N         Sampling steps (default: ${DEV_SAMPLING_STEPS})"
+        echo "  --targets N       Number of targets (default: ${DEV_N})"
+        echo "  --max-residues N  Max residues per target (default: ${DEV_MAX_RESIDUES})"
+        echo ""
         echo "Environment variables:"
         echo "  BENCH_DIR       Benchmark working directory (default: ~/boltz-benchmark)"
         echo "  CONDA_ENV       Boltz conda environment (default: boltz-bench)"
         echo "  OST_CONDA_ENV   OpenStructure conda environment (default: ost-eval)"
-        echo "  PILOT_N         Number of targets for pilot run (default: 20)"
         ;;
 esac
