@@ -207,7 +207,9 @@ download_data() {
 # --- Run predictions ----------------------------------------------------------
 
 _run_boltz() {
-    export PYTHONWARNINGS="ignore::DeprecationWarning:torch.utils.data._utils.pin_memory"
+    # Suppress noisy warnings from PyTorch, Lightning, and cuequivariance
+    export PYTHONWARNINGS="ignore::DeprecationWarning,ignore::UserWarning:pytorch_lightning,ignore::UserWarning:cuequivariance_ops_torch,ignore::UserWarning:torch"
+    export PL_DISABLE_TIPS=1
     conda run --no-capture-output -n "${CONDA_ENV}" "$@"
 }
 
