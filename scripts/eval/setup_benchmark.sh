@@ -17,6 +17,9 @@
 #   # Run pilot benchmark (20 targets, quick validation)
 #   bash scripts/eval/setup_benchmark.sh pilot
 #
+#   # Run dev benchmark (25 curated targets, fast iteration)
+#   bash scripts/eval/setup_benchmark.sh dev
+#
 #   # Run full benchmark
 #   bash scripts/eval/setup_benchmark.sh full
 #
@@ -48,6 +51,10 @@ SEED=42
 
 # Pilot subset size
 PILOT_N=20
+
+# Dev benchmark: curated representative set
+DEV_N=25
+DEV_MAX_RESIDUES=1000
 
 # --- Colors -------------------------------------------------------------------
 
@@ -305,6 +312,103 @@ run_pilot() {
     info "Next: bash scripts/eval/setup_benchmark.sh evaluate pilot"
 }
 
+
+# --- Dev benchmark (curated representative set) ------------------------------
+
+run_dev() {
+    info "Running DEV benchmark (${DEV_N} curated targets)..."
+
+    EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
+    INPUT_DIR="${EVAL_DATA}/inputs/test/boltz"
+    DEV_DIR="${BENCH_DIR}/data/dev_inputs"
+
+    if [ ! -d "${INPUT_DIR}/queries" ]; then
+        err "Eval data not found. Run: bash scripts/eval/setup_benchmark.sh download"
+        exit 1
+    fi
+
+    _check_triton
+
+    if [ ! -d "${DEV_DIR}/queries" ]; then
+        info "Curating dev target set..."
+
+        # Generate target list using curation script
+        REPO="${BENCH_DIR}/boltz-community"
+        DEV_LIST="${DEV_DIR}/targets.txt"
+        mkdir -p "${DEV_DIR}"
+
+        _run_boltz python "${REPO}/scripts/eval/curate_dev_set.py" \
+            "${INPUT_DIR}/queries/" \
+            --num-targets "${DEV_N}" \
+            --max-residues "${DEV_MAX_RESIDUES}" \
+            --seed "${SEED}" \
+            --output "${DEV_LIST}"
+
+        # Copy selected targets with rewritten MSA paths
+        mkdir -p "${DEV_DIR}/queries" "${DEV_DIR}/msa"
+
+        while IFS= read -r TARGET_NAME; do
+            YAML_FILE="${TARGET_NAME}.yaml"
+
+            if [ ! -f "${INPUT_DIR}/queries/${YAML_FILE}" ]; then
+                warn "Target YAML not found: ${YAML_FILE}, skipping"
+                continue
+            fi
+
+            # Copy YAML and rewrite MSA paths
+            sed "s|/data/rbg/users/[^ ]*/msa/|../msa/|g" \
+                "${INPUT_DIR}/queries/${YAML_FILE}" > "${DEV_DIR}/queries/${YAML_FILE}"
+
+            # Copy corresponding MSA files
+            for MSA_FILE in "${INPUT_DIR}"/msa/${TARGET_NAME}*; do
+                [ -f "${MSA_FILE}" ] && cp "${MSA_FILE}" "${DEV_DIR}/msa/"
+            done
+        done < "${DEV_LIST}"
+
+        ok "Prepared $(ls "${DEV_DIR}/queries/" | wc -l) dev inputs"
+    else
+        info "Dev inputs already prepared"
+    fi
+
+    ACTUAL_N=$(ls "${DEV_DIR}/queries/" | wc -l)
+    info "Running predictions on ${ACTUAL_N} curated targets..."
+
+    # Run Boltz-2
+    info "=== Boltz-2 predictions ==="
+    _run_boltz boltz predict "${DEV_DIR}/queries" \
+        --out_dir "${BENCH_DIR}/results/dev_boltz2" \
+        --recycling_steps "${RECYCLING_STEPS}" \
+        --sampling_steps "${SAMPLING_STEPS}" \
+        --diffusion_samples "${DIFFUSION_SAMPLES}" \
+        --seed "${SEED}" \
+        --skip_bad_inputs \
+        2>&1 | tee "${BENCH_DIR}/results/dev_boltz2.log"
+
+    ok "Dev Boltz-2 predictions complete"
+
+    # Run Boltz-1
+    info "=== Boltz-1 predictions ==="
+    _run_boltz boltz predict "${DEV_DIR}/queries" \
+        --out_dir "${BENCH_DIR}/results/dev_boltz1" \
+        --recycling_steps "${RECYCLING_STEPS}" \
+        --sampling_steps "${SAMPLING_STEPS}" \
+        --diffusion_samples "${DIFFUSION_SAMPLES}" \
+        --seed "${SEED}" \
+        --skip_bad_inputs \
+        --model boltz1 \
+        2>&1 | tee "${BENCH_DIR}/results/dev_boltz1.log"
+
+    ok "Dev Boltz-1 predictions complete"
+
+    echo ""
+    info "Dev predictions saved to:"
+    echo "  Boltz-2: ${BENCH_DIR}/results/dev_boltz2/"
+    echo "  Boltz-1: ${BENCH_DIR}/results/dev_boltz1/"
+    echo ""
+    info "Next: bash scripts/eval/setup_benchmark.sh evaluate dev"
+}
+
+
 _prepare_inputs() {
     # Prepare inputs for a dataset by rewriting MSA paths to local paths
     local SRC_DIR="$1"
@@ -411,14 +515,14 @@ run_evaluate() {
 
     for MODEL in boltz2 boltz1; do
         for DATASET in test casp15; do
-            if [ "${SCOPE}" = "pilot" ] && [ "${DATASET}" = "casp15" ]; then
+            if [ "${SCOPE}" != "full" ] && [ "${DATASET}" = "casp15" ]; then
                 continue
             fi
 
-            if [ "${SCOPE}" = "pilot" ]; then
-                PRED_DIR="${BENCH_DIR}/results/pilot_${MODEL}"
-            else
+            if [ "${SCOPE}" = "full" ]; then
                 PRED_DIR="${BENCH_DIR}/results/full_${MODEL}_${DATASET}"
+            else
+                PRED_DIR="${BENCH_DIR}/results/${SCOPE}_${MODEL}"
             fi
 
             # Find the predictions subdirectory (boltz creates boltz_results_<input_dir>/predictions/)
@@ -548,6 +652,9 @@ case "${1:-help}" in
     pilot)
         run_pilot
         ;;
+    dev)
+        run_dev
+        ;;
     full)
         run_full
         ;;
@@ -569,8 +676,9 @@ case "${1:-help}" in
         echo "  setup      Install dependencies, create conda envs"
         echo "  download   Download Boltz-1 evaluation data from Google Drive"
         echo "  pilot      Run pilot benchmark (${PILOT_N} targets, ~1-2 hours on 4090)"
+        echo "  dev        Run dev benchmark (${DEV_N} curated targets, ~1-2 hours on 4090)"
         echo "  full       Run full benchmark (all targets, ~1-3 days on 4090)"
-        echo "  evaluate [pilot|full]  Run OpenStructure eval on predictions"
+        echo "  evaluate [pilot|dev|full]  Run OpenStructure eval on predictions"
         echo "  status     Show current benchmark status"
         echo "  preflight  Check system prerequisites"
         echo ""
