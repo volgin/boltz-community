@@ -22,8 +22,22 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install GPU-compatible PyTorch
+        run: pip install "torch==2.10.0"
+
       - name: Install dependencies
         run: pip install -e ".[test]"
+
+      - name: Show GPU stack
+        run: |
+          python - <<'PY'
+          import torch
+
+          print("torch", torch.__version__)
+          print("torch cuda", torch.version.cuda)
+          print("cuda available", torch.cuda.is_available())
+          PY
+          nvidia-smi
 
       - name: Cache model checkpoints
         uses: actions/cache@v4
