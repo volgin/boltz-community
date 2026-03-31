@@ -534,9 +534,9 @@ class AtomDiffusion(Module):
                 )
 
                 sample_ids = torch.arange(multiplicity, device=atom_coords_noisy.device)
-                sample_ids_chunks = sample_ids.chunk(
-                    multiplicity % max_parallel_samples + 1
-                )
+                if max_parallel_samples is None:
+                    max_parallel_samples = multiplicity
+                sample_ids_chunks = sample_ids.split(max_parallel_samples)
                 for sample_ids_chunk in sample_ids_chunks:
                     atom_coords_denoised_chunk, token_a_chunk = (
                         self.preconditioned_network_forward(

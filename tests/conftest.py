@@ -2,6 +2,7 @@
 
 import gzip
 import tempfile
+from types import MethodType
 from pathlib import Path
 
 import pytest
@@ -259,3 +260,108 @@ def small_feats_dict():
         "bfactor": torch.rand(B, N_atom) * 80,
         "r_set_to_rep_atom": token_to_rep_atom.clone(),
     }
+
+
+@pytest.fixture
+def expected_sample_chunk_sizes():
+    """Build the expected per-call chunk sizes for a sampled denoising loop."""
+    pytest.importorskip("torch")
+
+    def _expected_sample_chunk_sizes(
+        multiplicity: int, max_parallel_samples: int, num_steps: int
+    ) -> list[int]:
+        per_step = [
+            min(max_parallel_samples, multiplicity - start)
+            for start in range(0, multiplicity, max_parallel_samples)
+        ]
+        return per_step * num_steps
+
+    return _expected_sample_chunk_sizes
+
+
+@pytest.fixture
+def v1_atom_diffusion_factory():
+    """Build a lightweight Boltz-1 diffusion stub that records sampled batch sizes."""
+    pytest.importorskip("torch")
+
+    try:
+        from boltz.model.modules.diffusion import AtomDiffusion
+    except ImportError as e:
+        pytest.skip(f"Cannot import AtomDiffusion: {e}")
+
+    def _make_v1_atom_diffusion(call_sizes: list[int]):
+        diffusion = AtomDiffusion.__new__(AtomDiffusion)
+        torch.nn.Module.__init__(diffusion)
+        diffusion.score_model = torch.nn.Linear(1, 1)
+        diffusion.token_s = 2
+        diffusion.sigma_min = 0.5
+        diffusion.sigma_max = 1.0
+        diffusion.sigma_data = 1.0
+        diffusion.rho = 1.0
+        diffusion.num_sampling_steps = 2
+        diffusion.gamma_0 = 0.0
+        diffusion.gamma_min = 999.0
+        diffusion.noise_scale = 1.0
+        diffusion.step_scale = 1.0
+        diffusion.use_inference_model_cache = False
+        diffusion.accumulate_token_repr = False
+        diffusion.alignment_reverse_diff = False
+        diffusion.eval()
+
+        def fake_forward(self, noised_atom_coords, sigma, training, network_condition_kwargs):
+            del sigma, training
+            call_sizes.append(noised_atom_coords.shape[0])
+            num_tokens = network_condition_kwargs["feats"]["token_index"].shape[1]
+            token_a = torch.zeros(
+                (noised_atom_coords.shape[0], num_tokens, 2 * self.token_s),
+                dtype=noised_atom_coords.dtype,
+                device=noised_atom_coords.device,
+            )
+            return torch.zeros_like(noised_atom_coords), token_a
+
+        diffusion.preconditioned_network_forward = MethodType(
+            fake_forward, diffusion
+        )
+        return diffusion
+
+    return _make_v1_atom_diffusion
+
+
+@pytest.fixture
+def v2_atom_diffusion_factory():
+    """Build a lightweight Boltz-2 diffusion stub that records sampled batch sizes."""
+    pytest.importorskip("torch")
+
+    try:
+        from boltz.model.modules.diffusionv2 import AtomDiffusion
+    except ImportError as e:
+        pytest.skip(f"Cannot import AtomDiffusion: {e}")
+
+    def _make_v2_atom_diffusion(call_sizes: list[int]):
+        diffusion = AtomDiffusion.__new__(AtomDiffusion)
+        torch.nn.Module.__init__(diffusion)
+        diffusion.score_model = torch.nn.Linear(1, 1)
+        diffusion.sigma_min = 0.5
+        diffusion.sigma_max = 1.0
+        diffusion.sigma_data = 1.0
+        diffusion.rho = 1.0
+        diffusion.num_sampling_steps = 2
+        diffusion.gamma_0 = 0.0
+        diffusion.gamma_min = 999.0
+        diffusion.noise_scale = 1.0
+        diffusion.step_scale = 1.0
+        diffusion.step_scale_random = None
+        diffusion.alignment_reverse_diff = False
+        diffusion.eval()
+
+        def fake_forward(self, noised_atom_coords, sigma, network_condition_kwargs):
+            del sigma, network_condition_kwargs
+            call_sizes.append(noised_atom_coords.shape[0])
+            return torch.zeros_like(noised_atom_coords)
+
+        diffusion.preconditioned_network_forward = MethodType(
+            fake_forward, diffusion
+        )
+        return diffusion
+
+    return _make_v2_atom_diffusion
