@@ -259,3 +259,103 @@ def small_feats_dict():
         "bfactor": torch.rand(B, N_atom) * 80,
         "r_set_to_rep_atom": token_to_rep_atom.clone(),
     }
+
+
+@pytest.fixture
+def expected_sample_chunk_sizes():
+    """Build the expected per-call chunk sizes for a sampled denoising loop."""
+    def _expected_sample_chunk_sizes(
+        multiplicity: int, max_parallel_samples: int, num_steps: int
+    ) -> list[int]:
+        per_step = [
+            min(max_parallel_samples, multiplicity - start)
+            for start in range(0, multiplicity, max_parallel_samples)
+        ]
+        return per_step * num_steps
+
+    return _expected_sample_chunk_sizes
+
+
+@pytest.fixture
+def v1_atom_diffusion_factory():
+    """Build a lightweight Boltz-1 diffusion module that records sampled batch sizes."""
+    from boltz.model.modules.diffusion import AtomDiffusion
+
+    def _make_v1_atom_diffusion(call_sizes: list[int]):
+        class RecordingV1ScoreModel(torch.nn.Module):
+            def __init__(self, token_s: int):
+                super().__init__()
+                self.coord_proj = torch.nn.Linear(3, 3, bias=False)
+                self.token_proj = torch.nn.Linear(1, 2 * token_s, bias=False)
+                torch.nn.init.zeros_(self.coord_proj.weight)
+                torch.nn.init.zeros_(self.token_proj.weight)
+
+            def forward(self, r_noisy, times, **network_condition_kwargs):
+                assert network_condition_kwargs["multiplicity"] == r_noisy.shape[0]
+                call_sizes.append(r_noisy.shape[0])
+                num_tokens = network_condition_kwargs["feats"]["token_index"].shape[1]
+                token_a = self.token_proj(times.to(r_noisy.dtype).unsqueeze(-1))
+                token_a = token_a.unsqueeze(1).expand(-1, num_tokens, -1)
+                return {
+                    "r_update": self.coord_proj(r_noisy),
+                    "token_a": token_a,
+                }
+
+        diffusion = AtomDiffusion.__new__(AtomDiffusion)
+        torch.nn.Module.__init__(diffusion)
+        diffusion.token_s = 2
+        diffusion.score_model = RecordingV1ScoreModel(diffusion.token_s)
+        diffusion.sigma_min = 0.5
+        diffusion.sigma_max = 1.0
+        diffusion.sigma_data = 1.0
+        diffusion.rho = 1.0
+        diffusion.num_sampling_steps = 2
+        diffusion.gamma_0 = 0.0
+        diffusion.gamma_min = 999.0
+        diffusion.noise_scale = 1.0
+        diffusion.step_scale = 1.0
+        diffusion.use_inference_model_cache = False
+        diffusion.accumulate_token_repr = False
+        diffusion.alignment_reverse_diff = False
+        diffusion.eval()
+        return diffusion
+
+    return _make_v1_atom_diffusion
+
+
+@pytest.fixture
+def v2_atom_diffusion_factory():
+    """Build a lightweight Boltz-2 diffusion module that records sampled batch sizes."""
+    from boltz.model.modules.diffusionv2 import AtomDiffusion
+
+    def _make_v2_atom_diffusion(call_sizes: list[int]):
+        class RecordingV2ScoreModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.coord_proj = torch.nn.Linear(3, 3, bias=False)
+                torch.nn.init.zeros_(self.coord_proj.weight)
+
+            def forward(self, r_noisy, times, **network_condition_kwargs):
+                del times
+                assert network_condition_kwargs["multiplicity"] == r_noisy.shape[0]
+                call_sizes.append(r_noisy.shape[0])
+                return self.coord_proj(r_noisy)
+
+        diffusion = AtomDiffusion.__new__(AtomDiffusion)
+        torch.nn.Module.__init__(diffusion)
+        diffusion.score_model = RecordingV2ScoreModel()
+        diffusion.sigma_min = 0.5
+        diffusion.sigma_max = 1.0
+        diffusion.sigma_data = 1.0
+        diffusion.rho = 1.0
+        diffusion.num_sampling_steps = 2
+        diffusion.gamma_0 = 0.0
+        diffusion.gamma_min = 999.0
+        diffusion.noise_scale = 1.0
+        diffusion.step_scale = 1.0
+        diffusion.step_scale_random = None
+        diffusion.alignment_reverse_diff = False
+        diffusion.eval()
+        return diffusion
+
+    return _make_v2_atom_diffusion
