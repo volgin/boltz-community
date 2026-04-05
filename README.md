@@ -39,6 +39,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed Boltz-2 checkpoint loading crash due to extra `mse_rotational_alignment` kwarg ([#644](https://github.com/jwohlwend/boltz/issues/644))
 - Fixed empty checkpoint files causing cryptic `load_from_checkpoint` aborts — now re-downloads empty cached weights and raises a clear error before model load ([#664](https://github.com/jwohlwend/boltz/issues/664))
 - Fixed CPU inference producing distorted structures with wrong bond lengths — Boltz-2 was incorrectly using `bf16-mixed` precision on CPU; now forces float32 ([#653](https://github.com/jwohlwend/boltz/issues/653))
+- Fixed diffusion sampling ignoring `--max_parallel_samples` in divisible cases (for example `10` samples with a parallel limit of `5`), which could batch everything into one large chunk and trigger avoidable OOMs
 - Fixed MSA discarded as "does not match input sequence" when pre-computed MSAs are aligned to a full UniProt sequence but the input uses a shorter PDB construct — Boltz now finds the construct as a contiguous subsequence within the MSA query and trims all MSA rows accordingly, instead of falling back to a dummy single-sequence MSA. Tolerates up to 5% mismatches (selenomethionine substitutions, expression tags, minor construct mutations). Applies to both Boltz-1 and Boltz-2.
 
 **Improvements:**
@@ -55,7 +56,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - `process_atom_features` pre-allocates output arrays and fills `atom_to_token` in one slice per token (eliminates per-atom appends)
 
 **Tests & CI:**
-- 190+ tests: unit tests (CPU), smoke tests (end-to-end inference), regression tests (golden output verification for Boltz-1 and Boltz-2), determinism tests, MSA trim subsequence matching (8 cases), and featurizer pre-allocation correctness
+- 190+ tests: unit tests (CPU), smoke tests (end-to-end inference), regression tests (golden output verification for Boltz-1 and Boltz-2), determinism tests, MSA trim subsequence matching (8 cases), diffusion chunking regression tests, and featurizer pre-allocation correctness
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
 
 ## Contributing
