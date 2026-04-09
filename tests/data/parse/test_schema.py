@@ -1,6 +1,7 @@
 """Tests for boltz.data.parse.schema — atom naming, chirality, and leaving atoms."""
 
 import re
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,37 @@ def _parse_ligand_smiles(smiles: str) -> StructureV2:
     }
     target = parse_boltz_schema(Path("test.yaml"), schema, ccd={}, boltz_2=True)
     return target.structure
+
+
+def _mock_residue_mol(res_name, _mols, _moldir):
+    """Build a small reference residue mol with atom-name properties."""
+    from boltz.data import const
+
+    mol = Chem.RWMol()
+    coords = []
+    for atom_name in const.ref_atoms[res_name]:
+        if atom_name.startswith("N"):
+            atomic_num = 7
+        elif atom_name.startswith("O"):
+            atomic_num = 8
+        elif atom_name.startswith("S"):
+            atomic_num = 16
+        elif atom_name.startswith("P"):
+            atomic_num = 15
+        else:
+            atomic_num = 6
+        idx = mol.AddAtom(Chem.Atom(atomic_num))
+        mol.GetAtomWithIdx(idx).SetProp("name", atom_name)
+        coords.append((float(idx), 0.0, 0.0))
+        if idx > 0:
+            mol.AddBond(idx - 1, idx, Chem.BondType.SINGLE)
+
+    mol = mol.GetMol()
+    conformer = Chem.Conformer(mol.GetNumAtoms())
+    for idx, (x, y, z) in enumerate(coords):
+        conformer.SetAtomPosition(idx, (x, y, z))
+    mol.AddConformer(conformer)
+    return mol
 
 
 class TestAtomNaming:
@@ -253,3 +285,64 @@ class TestLeavingAtoms:
         assert len(calls) == 2
         for call in calls:
             assert call.get("drop_leaving_atoms", False) is True
+
+
+class TestTemplatePaths:
+    """Template paths should be resolved relative to the YAML file."""
+
+    @pytest.fixture(autouse=True)
+    def _check_deps(self):
+        """Skip if parser deps are missing."""
+        try:
+            from boltz.data.parse.yaml import parse_yaml  # noqa: F401
+        except ImportError as e:
+            pytest.skip(f"Cannot import parse_yaml: {e}")
+
+    @staticmethod
+    def _write_template_pdb(path: Path) -> None:
+        """Write a minimal atom-only PDB that parses as a protein template."""
+        path.write_text(
+            """\
+ATOM      1  N   ALA A   1      11.104  13.207  14.101  1.00 20.00           N
+ATOM      2  CA  ALA A   1      12.560  13.207  14.101  1.00 20.00           C
+ATOM      3  C   ALA A   1      13.000  14.500  14.800  1.00 20.00           C
+ATOM      4  O   ALA A   1      12.300  15.500  14.700  1.00 20.00           O
+ATOM      5  CB  ALA A   1      13.100  12.000  14.900  1.00 20.00           C
+TER
+END
+"""
+        )
+
+    def test_relative_template_pdb_path_uses_yaml_parent(self, tmp_path, monkeypatch):
+        """Template PDB paths should not depend on the current working directory."""
+        from boltz.data.parse.yaml import parse_yaml
+
+        input_dir = tmp_path / "inputs"
+        input_dir.mkdir()
+        template_path = input_dir / "template.pdb"
+        yaml_path = input_dir / "input.yaml"
+        self._write_template_pdb(template_path)
+        yaml_path.write_text(
+            textwrap.dedent(
+                """\
+                version: 1
+                sequences:
+                  - protein:
+                      id: A
+                      sequence: A
+                      msa: empty
+                templates:
+                  - pdb: ./template.pdb
+                    chain_id: A
+                """
+            )
+        )
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("boltz.data.parse.schema.get_mol", _mock_residue_mol)
+        monkeypatch.setattr("boltz.data.parse.mmcif.get_mol", _mock_residue_mol)
+
+        target = parse_yaml(yaml_path, ccd={}, mol_dir=tmp_path, boltz2=True)
+
+        assert len(target.record.templates or []) == 1
+        assert list(target.templates or {}) == ["template"]

@@ -1648,6 +1648,12 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             msg = "Template was not properly specified, missing CIF or PDB path!"
             raise ValueError(msg)
 
+        path = Path(path)
+        if not path.is_absolute():
+            path = (parent / path).resolve()
+        else:
+            path = path.resolve()
+
         template_id = Path(path).stem
         chain_ids = template.get("chain_id", None)
         template_chain_ids = template.get("template_id", None)

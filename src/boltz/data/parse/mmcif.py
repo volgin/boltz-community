@@ -572,6 +572,13 @@ def parse_polymer(  # noqa: C901, PLR0915, PLR0912
     """
     # Ignore microheterogeneities (pick first)
     sequence = [gemmi.Entity.first_mon(item) for item in sequence]
+    polymer_sequence = [res.name for res in polymer]
+
+    # PDB-derived templates may lack entity sequence metadata after conversion to
+    # mmCIF. Fall back to the observed polymer residues so template parsing can
+    # still proceed.
+    if not sequence:
+        sequence = polymer_sequence
 
     # Align full sequence to polymer residues
     # This is a simple way to handle all the different numbering schemes
@@ -581,6 +588,22 @@ def parse_polymer(  # noqa: C901, PLR0915, PLR0912
         polymer_type,
         gemmi.AlignmentScoring(),
     )
+
+    if len(result.match_string) > len(sequence):
+        if polymer_sequence != sequence:
+            sequence = polymer_sequence
+            result = gemmi.align_sequence_to_polymer(
+                sequence,
+                polymer,
+                polymer_type,
+                gemmi.AlignmentScoring(),
+            )
+        if len(result.match_string) > len(sequence):
+            msg = (
+                f"Alignment length exceeds sequence length for chain {chain_id}: "
+                f"{len(result.match_string)} > {len(sequence)}"
+            )
+            raise ValueError(msg)
 
     # Get coordinates and masks
     i = 0
