@@ -128,6 +128,76 @@ def compute_aggregated_metric(logits, end=1.0):
     return plddt
 
 
+def _weighted_mean_or_nan(values, weights, dims):
+    """Return a weighted mean, using NaN when the weight sum is zero."""
+    weight_sum = weights.sum(dim=dims)
+    weighted_sum = (values * weights).sum(dim=dims)
+    mean = weighted_sum / torch.clamp(weight_sum, min=1e-10)
+    return torch.where(weight_sum > 0, mean, torch.full_like(mean, torch.nan))
+
+
+def _compute_contact_weight_masks(feats, pred_distogram_logits, multiplicity):
+    """Build the contact-weighted masks used for PDE- and PAE-style summaries."""
+    pred_distogram_prob = nn.functional.softmax(
+        pred_distogram_logits, dim=-1
+    ).repeat_interleave(multiplicity, 0)
+    contacts = torch.zeros(
+        (1, 1, 1, pred_distogram_prob.shape[-1]),
+        dtype=pred_distogram_prob.dtype,
+        device=pred_distogram_prob.device,
+    )
+    contacts[:, :, :, : min(20, pred_distogram_prob.shape[-1])] = 1.0
+    prob_contact = (pred_distogram_prob * contacts).sum(-1)
+
+    token_pad_mask = feats["token_pad_mask"].repeat_interleave(multiplicity, 0).float()
+    token_pad_pair_mask = (
+        token_pad_mask.unsqueeze(-1)
+        * token_pad_mask.unsqueeze(-2)
+        * (
+            1
+            - torch.eye(
+                token_pad_mask.shape[1], device=token_pad_mask.device
+            ).unsqueeze(0)
+        )
+    )
+    token_pair_mask = token_pad_pair_mask * prob_contact
+    asym_id = feats["asym_id"].repeat_interleave(multiplicity, 0)
+    token_interface_pair_mask = token_pair_mask * (
+        asym_id.unsqueeze(-1) != asym_id.unsqueeze(-2)
+    )
+    return token_pair_mask, token_interface_pair_mask, asym_id
+
+
+def compute_pae_summaries(pae, pred_distogram_logits, feats, multiplicity):
+    """Compute contact-weighted aggregate PAE summaries."""
+    token_pair_mask, token_interface_pair_mask, asym_id = _compute_contact_weight_masks(
+        feats, pred_distogram_logits, multiplicity
+    )
+
+    complex_pae = _weighted_mean_or_nan(pae, token_pair_mask, dims=(1, 2))
+    complex_ipae = _weighted_mean_or_nan(
+        pae, token_interface_pair_mask, dims=(1, 2)
+    )
+
+    valid_asym_id = asym_id[
+        feats["token_pad_mask"].repeat_interleave(multiplicity, 0).bool()
+    ]
+    asym_ids_list = torch.unique(valid_asym_id).tolist()
+
+    pair_chains_pae = {}
+    for idx1 in asym_ids_list:
+        chain_pae = {}
+        idx1_mask = (asym_id.unsqueeze(-1) == idx1).to(token_pair_mask.dtype)
+        for idx2 in asym_ids_list:
+            idx2_mask = (asym_id.unsqueeze(-2) == idx2).to(token_pair_mask.dtype)
+            chain_pair_mask = token_pair_mask * idx1_mask * idx2_mask
+            chain_pae[idx2] = _weighted_mean_or_nan(pae, chain_pair_mask, dims=(1, 2))
+        pair_chains_pae[idx1] = chain_pae
+
+    chains_pae = {idx: pair_chains_pae[idx][idx] for idx in asym_ids_list}
+    return complex_pae, complex_ipae, chains_pae, pair_chains_pae
+
+
 def tm_function(d, Nres):
     d0 = 1.24 * (torch.clip(Nres, min=19) - 15) ** (1 / 3) - 1.8
     return 1 / (1 + (d / d0) ** 2)

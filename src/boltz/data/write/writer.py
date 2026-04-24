@@ -14,6 +14,27 @@ from boltz.data.write.mmcif import to_mmcif
 from boltz.data.write.pdb import to_pdb
 
 
+def _serialize_summary_value(value: object) -> object:
+    """Convert tensor/scalar summary values into JSON-safe Python values."""
+    if isinstance(value, torch.Tensor):
+        value = value.item()
+    if isinstance(value, float) and np.isnan(value):
+        return None
+    return value
+
+
+def _select_prediction_value(value: object, model_idx: int) -> object:
+    """Extract and serialize the value for one model from nested prediction data."""
+    if isinstance(value, dict):
+        return {
+            key: _select_prediction_value(item, model_idx)
+            for key, item in value.items()
+        }
+    if isinstance(value, torch.Tensor) and value.ndim > 0:
+        return _serialize_summary_value(value[model_idx])
+    return _serialize_summary_value(value)
+
+
 class BoltzWriter(BasePredictionWriter):
     """Custom writer for predictions."""
 
@@ -213,6 +234,19 @@ class BoltzWriter(BasePredictionWriter):
                         }
                         for idx1 in pair_chains
                     }
+                    if "complex_pae" in prediction:
+                        confidence_summary_dict["complex_pae"] = _select_prediction_value(
+                            prediction["complex_pae"], model_idx
+                        )
+                        confidence_summary_dict["complex_ipae"] = _select_prediction_value(
+                            prediction["complex_ipae"], model_idx
+                        )
+                        confidence_summary_dict["chains_pae"] = _select_prediction_value(
+                            prediction["chains_pae"], model_idx
+                        )
+                        confidence_summary_dict["pair_chains_pae"] = _select_prediction_value(
+                            prediction["pair_chains_pae"], model_idx
+                        )
                     path = struct_dir / f"confidence_{rank_suffix}.json"
                     with path.open("w") as f:
                         json.dump(confidence_summary_dict, f, indent=4)

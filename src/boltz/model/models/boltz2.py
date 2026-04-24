@@ -1105,6 +1105,10 @@ class Boltz2(LightningModule):
                 if self.alpha_pae > 0:
                     if self.predict_args.get("write_full_pae", True):
                         pred_dict["pae"] = out["pae"]
+                    pred_dict["complex_pae"] = out["complex_pae"]
+                    pred_dict["complex_ipae"] = out["complex_ipae"]
+                    pred_dict["chains_pae"] = out["chains_pae"]
+                    pred_dict["pair_chains_pae"] = out["pair_chains_pae"]
                     pred_dict["ptm"] = out["ptm"]
                     pred_dict["iptm"] = out["iptm"]
                     pred_dict["ligand_iptm"] = out["ligand_iptm"]

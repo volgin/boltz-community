@@ -4,8 +4,9 @@ from torch import nn
 
 import boltz.model.layers.initialize as init
 from boltz.data import const
-from boltz.model.modules.confidence_utils import (
+from boltz.model.layers.confidence_utils import (
     compute_aggregated_metric,
+    compute_pae_summaries,
     compute_ptms,
 )
 from boltz.model.modules.encoders import RelativePositionEncoder
@@ -471,6 +472,14 @@ class ConfidenceHeads(nn.Module):
         if self.compute_pae:
             out_dict["pae_logits"] = pae_logits
             out_dict["pae"] = compute_aggregated_metric(pae_logits, end=32)
+            (
+                out_dict["complex_pae"],
+                out_dict["complex_ipae"],
+                out_dict["chains_pae"],
+                out_dict["pair_chains_pae"],
+            ) = compute_pae_summaries(
+                out_dict["pae"], pred_distogram_logits, feats, multiplicity
+            )
             ptm, iptm, ligand_iptm, protein_iptm, pair_chains_iptm = compute_ptms(
                 pae_logits, x_pred, feats, multiplicity
             )

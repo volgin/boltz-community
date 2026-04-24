@@ -6,6 +6,7 @@ import boltz.model.layers.initialize as init
 from boltz.data import const
 from boltz.model.layers.confidence_utils import (
     compute_aggregated_metric,
+    compute_pae_summaries,
     compute_ptms,
 )
 from boltz.model.layers.pairformer import PairformerModule
@@ -475,6 +476,14 @@ class ConfidenceHeads(nn.Module):
         )
         out_dict["pae_logits"] = pae_logits
         out_dict["pae"] = compute_aggregated_metric(pae_logits, end=32)
+        (
+            out_dict["complex_pae"],
+            out_dict["complex_ipae"],
+            out_dict["chains_pae"],
+            out_dict["pair_chains_pae"],
+        ) = compute_pae_summaries(
+            out_dict["pae"], pred_distogram_logits, feats, multiplicity
+        )
 
         try:
             ptm, iptm, ligand_iptm, protein_iptm, pair_chains_iptm = compute_ptms(

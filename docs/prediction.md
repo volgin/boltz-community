@@ -168,7 +168,7 @@ Examples of common options include:
 | `--msa_server_url`       | str             | `https://api.colabfold.com` | MSA server url. Used only if --use_msa_server is set.                                                                                                                               |
 | `--msa_pairing_strategy` | str             | `greedy`                    | Pairing strategy to use. Used only if --use_msa_server is set. Options are 'greedy' and 'complete'                                                                                  |
 | `--use_potentials`        | `FLAG`          | `False`                     | Whether to run the original Boltz-2 model using inference time potentials.                                                                                                        |
-| `--write_full_pae` <br> `--no_write_full_pae`       | `FLAG`          | `True`                     | Whether to save the full PAE matrix as a file.                                                                                                                                      |
+| `--write_full_pae` <br> `--no_write_full_pae`       | `FLAG`          | `True`                     | Whether to save the full PAE matrix as a file. Aggregated PAE summary fields are still written to the confidence JSON.                                                            |
 | `--write_full_pde` <br> `--no_write_full_pde`       | `FLAG`          | `True`                     | Whether to save the full PDE matrix as a file.                                                                                                                                      |
 
 ## Output
@@ -180,7 +180,7 @@ out_dir/
 ├── predictions/                                               # Contains the model's predictions
     ├── [input_file1]/
         ├── [input_file1]_model_0.cif                          # The predicted structure in CIF format, with the inclusion of per token pLDDT scores
-        ├── confidence_[input_file1]_model_0.json              # The confidence scores (confidence_score, ptm, iptm, ligand_iptm, protein_iptm, complex_plddt, complex_iplddt, chains_ptm, pair_chains_iptm)
+        ├── confidence_[input_file1]_model_0.json              # The confidence scores (confidence_score, ptm, iptm, ligand_iptm, protein_iptm, complex_plddt, complex_iplddt, complex_pde, complex_ipde, complex_pae, complex_ipae, chains_ptm, pair_chains_iptm, chains_pae, pair_chains_pae)
         ├── affinity_[input_file1].json                        # The affinity scores (affinity_pred_value, affinity_probability_binary, affinity_pred_value1, affinity_probability_binary1, affinity_pred_value2, affinity_probability_binary2)
 
         ├── pae_[input_file1]_model_0.npz                      # The predicted PAE score for every pair of tokens
@@ -205,8 +205,10 @@ Each output folder includes a confidence `.json` file with aggregated confidence
     "protein_iptm": 0.8225,           # ipTM but only aggregating at protein-protein interfaces
     "complex_plddt": 0.8402,          # Average pLDDT score for the complex
     "complex_iplddt": 0.8241,         # Average pLDDT score when upweighting interface tokens
-    "complex_pde": 0.8912,            # Average PDE score for the complex
-    "complex_ipde": 5.1650,           # Average PDE score when aggregating at interfaces  
+    "complex_pde": 0.8912,            # Contact-weighted average PDE score for the complex
+    "complex_ipde": 5.1650,           # Contact-weighted average PDE score when aggregating at interfaces
+    "complex_pae": 1.2034,            # Contact-weighted average PAE score for the complex
+    "complex_ipae": 4.8123,           # Contact-weighted average PAE score when aggregating at interfaces; null when undefined
     "chains_ptm": {                   # Predicted TM score within each chain
         "0": 0.8533,
         "1": 0.8330
@@ -220,10 +222,24 @@ Each output folder includes a confidence `.json` file with aggregated confidence
             "0": 0.8225,
             "1": 0.8330
         }
+    },
+    "chains_pae": {                   # Contact-weighted average PAE within each chain; null when undefined
+        "0": 0.9120,
+        "1": null
+    },
+    "pair_chains_pae": {              # Contact-weighted average PAE between each ordered chain pair; null when undefined
+        "0": {
+            "0": 0.9120,
+            "1": 4.8123
+        },
+        "1": {
+            "0": 5.1030,
+            "1": null
+        }
     }
 }
 ```
-`confidence_score`, `ptm` and `plddt` scores (and their interface and individual chain analogues) have a range of [0, 1], where higher values indicate higher confidence. `pde` scores have a unit of angstroms, where lower values indicate higher confidence.
+`confidence_score`, `ptm` and `plddt` scores (and their interface and individual chain analogues) have a range of [0, 1], where higher values indicate higher confidence. `pde` and `pae` scores have a unit of angstroms, where lower values indicate higher confidence. The aggregated `complex_pde`, `complex_ipde`, `complex_pae`, `complex_ipae`, `chains_pae`, and `pair_chains_pae` values are contact-weighted. Fields with no valid contact-weighted token pairs are written as `null`.
 
 The output affinity `.json` file is organized as follows:
 ```yaml
