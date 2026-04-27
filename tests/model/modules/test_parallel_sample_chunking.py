@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+from boltz.model.modules.diffusionv2 import _get_sample_id_chunks
+
 
 @pytest.mark.parametrize(("multiplicity", "max_parallel_samples"), [(10, 5), (3, 5), (11, 5)])
 def test_v1_sampling_respects_max_parallel_samples(
@@ -74,6 +76,17 @@ def test_v1_sampling_defaults_max_parallel_samples_to_multiplicity(
 
     assert result["sample_atom_coords"].shape[0] == multiplicity
     assert call_sizes == [multiplicity, multiplicity]
+
+
+def test_v2_sample_id_chunks_are_record_major():
+    chunks = _get_sample_id_chunks(
+        batch_size=2,
+        multiplicity=3,
+        max_parallel_samples=2,
+        device=torch.device("cpu"),
+    )
+
+    assert [chunk.tolist() for chunk in chunks] == [[0, 1, 3, 4], [2, 5]]
 
 
 def test_v2_sampling_defaults_max_parallel_samples_to_multiplicity(

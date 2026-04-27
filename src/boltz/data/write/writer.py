@@ -35,6 +35,23 @@ def _select_prediction_value(value: object, model_idx: int) -> object:
     return _serialize_summary_value(value)
 
 
+def _validate_prediction_leading_dim(
+    name: str, value: object, expected: int
+) -> None:
+    """Validate that prediction tensors align with the flattened sample axis."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _validate_prediction_leading_dim(f"{name}.{key}", item, expected)
+        return
+    if isinstance(value, torch.Tensor):
+        if value.shape[0] != expected:
+            msg = (
+                f"Prediction field {name} has leading dim {value.shape[0]}, "
+                f"expected {expected}."
+            )
+            raise ValueError(msg)
+
+
 class BoltzWriter(BasePredictionWriter):
     """Custom writer for predictions."""
 
@@ -85,22 +102,74 @@ class BoltzWriter(BasePredictionWriter):
         # Get the records
         records: list[Record] = batch["record"]
 
-        # Get the predictions
+        # Structure predictions are flattened as [batch_size * diffusion_samples, ...]
+        # in record-major order.
         coords = prediction["coords"]
-        coords = coords.unsqueeze(0)
-
         pad_masks = prediction["masks"]
-
-        # Get ranking
-        if "confidence_score" in prediction:
-            argsort = torch.argsort(prediction["confidence_score"], descending=True)
-            idx_to_rank = {idx.item(): rank for rank, idx in enumerate(argsort)}
-        # Handles cases where confidence summary is False
-        else:
-            idx_to_rank = {i: i for i in range(len(records))}
+        batch_size = len(records)
+        if pad_masks.shape[0] != batch_size:
+            msg = (
+                f"Prediction masks have batch dim {pad_masks.shape[0]}, "
+                f"expected {batch_size}."
+            )
+            raise ValueError(msg)
+        total_samples = coords.shape[0]
+        if total_samples % batch_size != 0:
+            msg = (
+                f"Predicted sample count {total_samples} is not divisible by "
+                f"batch size {batch_size}."
+            )
+            raise ValueError(msg)
+        samples_per_record = total_samples // batch_size
+        # Keep the allowlist explicit: only tensors indexed along the flattened
+        # sample axis should be validated here. Add new per-sample outputs to
+        # this list when extending writer support.
+        for key in (
+            "plddt",
+            "pae",
+            "pde",
+            "confidence_score",
+            "ptm",
+            "iptm",
+            "ligand_iptm",
+            "protein_iptm",
+            "complex_plddt",
+            "complex_iplddt",
+            "complex_pde",
+            "complex_ipde",
+            "complex_pae",
+            "complex_ipae",
+            "chains_pae",
+            "pair_chains_pae",
+            "pair_chains_iptm",
+        ):
+            if key in prediction:
+                _validate_prediction_leading_dim(key, prediction[key], total_samples)
+        for key in ("s", "z"):
+            if key in prediction and prediction[key].shape[0] != batch_size:
+                msg = (
+                    f"Prediction field {key} has batch dim {prediction[key].shape[0]}, "
+                    f"expected {batch_size}."
+                )
+                raise ValueError(msg)
 
         # Iterate over the records
-        for record, coord, pad_mask in zip(records, coords, pad_masks):
+        for record_idx, (record, pad_mask) in enumerate(zip(records, pad_masks)):
+            start = record_idx * samples_per_record
+            end = start + samples_per_record
+            coord = coords[start:end]
+
+            # Rank the samples for this record independently.
+            if "confidence_score" in prediction:
+                argsort = torch.argsort(
+                    prediction["confidence_score"][start:end], descending=True
+                )
+                idx_to_rank = {idx.item(): rank for rank, idx in enumerate(argsort)}
+            else:
+                idx_to_rank = {
+                    sample_idx: sample_idx for sample_idx in range(samples_per_record)
+                }
+
             # Load the structure
             path = self.data_dir / f"{record.id}.npz"
             if self.boltz2:
@@ -174,7 +243,7 @@ class BoltzWriter(BasePredictionWriter):
                 # Get plddt's
                 plddts = None
                 if "plddt" in prediction:
-                    plddts = prediction["plddt"][model_idx]
+                    plddts = prediction["plddt"][start + model_idx]
 
                 # Create path name
                 outname = f"{record.id}_model_{idx_to_rank[model_idx]}"
@@ -206,10 +275,8 @@ class BoltzWriter(BasePredictionWriter):
                 rank_suffix = f"{record.id}_model_{idx_to_rank[model_idx]}"
 
                 if "plddt" in prediction:
-                    plddt_np = prediction["plddt"][model_idx].cpu().numpy()
-
                     confidence_summary_dict = {
-                        key: prediction[key][model_idx].item()
+                        key: prediction[key][start + model_idx].item()
                         for key in (
                             "confidence_score",
                             "ptm",
@@ -224,28 +291,28 @@ class BoltzWriter(BasePredictionWriter):
                     }
                     pair_chains = prediction["pair_chains_iptm"]
                     confidence_summary_dict["chains_ptm"] = {
-                        idx: pair_chains[idx][idx][model_idx].item()
+                        idx: pair_chains[idx][idx][start + model_idx].item()
                         for idx in pair_chains
                     }
                     confidence_summary_dict["pair_chains_iptm"] = {
                         idx1: {
-                            idx2: pair_chains[idx1][idx2][model_idx].item()
+                            idx2: pair_chains[idx1][idx2][start + model_idx].item()
                             for idx2 in pair_chains[idx1]
                         }
                         for idx1 in pair_chains
                     }
                     if "complex_pae" in prediction:
                         confidence_summary_dict["complex_pae"] = _select_prediction_value(
-                            prediction["complex_pae"], model_idx
+                            prediction["complex_pae"], start + model_idx
                         )
                         confidence_summary_dict["complex_ipae"] = _select_prediction_value(
-                            prediction["complex_ipae"], model_idx
+                            prediction["complex_ipae"], start + model_idx
                         )
                         confidence_summary_dict["chains_pae"] = _select_prediction_value(
-                            prediction["chains_pae"], model_idx
+                            prediction["chains_pae"], start + model_idx
                         )
                         confidence_summary_dict["pair_chains_pae"] = _select_prediction_value(
-                            prediction["pair_chains_pae"], model_idx
+                            prediction["pair_chains_pae"], start + model_idx
                         )
                     path = struct_dir / f"confidence_{rank_suffix}.json"
                     with path.open("w") as f:
@@ -254,25 +321,29 @@ class BoltzWriter(BasePredictionWriter):
                     # Save plddt
                     np.savez_compressed(
                         struct_dir / f"plddt_{rank_suffix}.npz",
-                        plddt=plddt_np,
+                        plddt=prediction["plddt"][start + model_idx].cpu().numpy(),
                     )
 
                 if "pae" in prediction:
                     np.savez_compressed(
                         struct_dir / f"pae_{rank_suffix}.npz",
-                        pae=prediction["pae"][model_idx].cpu().numpy(),
+                        pae=prediction["pae"][start + model_idx].cpu().numpy(),
                     )
 
                 if "pde" in prediction:
                     np.savez_compressed(
                         struct_dir / f"pde_{rank_suffix}.npz",
-                        pde=prediction["pde"][model_idx].cpu().numpy(),
+                        pde=prediction["pde"][start + model_idx].cpu().numpy(),
                     )
-                
+
             # Save embeddings
             if self.write_embeddings and "s" in prediction and "z" in prediction:
-                s = prediction["s"].cpu().numpy()
-                z = prediction["z"].cpu().numpy()
+                if batch_size == 1:
+                    s = prediction["s"].cpu().numpy()
+                    z = prediction["z"].cpu().numpy()
+                else:
+                    s = prediction["s"][record_idx].cpu().numpy()
+                    z = prediction["z"][record_idx].cpu().numpy()
 
                 path = (
                     struct_dir

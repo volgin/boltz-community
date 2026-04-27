@@ -36,6 +36,27 @@ from boltz.model.modules.utils import (
 from boltz.model.potentials.potentials import get_potentials
 
 
+def _get_sample_id_chunks(
+    batch_size: int,
+    multiplicity: int,
+    max_parallel_samples: int,
+    device: torch.device,
+) -> list[torch.Tensor]:
+    """Build record-major sample index chunks for batched diffusion inference."""
+    sample_ids_2d = (
+        torch.arange(batch_size * multiplicity, device=device)
+        .view(batch_size, multiplicity)
+        .t()
+    )
+    sample_id_chunks = []
+    for chunk_start in range(0, multiplicity, max_parallel_samples):
+        chunk_end = min(chunk_start + max_parallel_samples, multiplicity)
+        sample_id_chunks.append(
+            sample_ids_2d[chunk_start:chunk_end].t().contiguous().view(-1)
+        )
+    return sample_id_chunks
+
+
 class DiffusionModule(Module):
     """Diffusion module"""
 
@@ -117,7 +138,7 @@ class DiffusionModule(Module):
         self,
         s_inputs,  # Float['b n ts']
         s_trunk,  # Float['b n ts']
-        r_noisy,  # Float['bm m 3']
+        r_noisy,  # Float['bs m 3']
         times,  # Float['bm 1 1']
         feats,
         diffusion_conditioning,
@@ -144,7 +165,7 @@ class DiffusionModule(Module):
             c=diffusion_conditioning["c"].float(),
             atom_enc_bias=diffusion_conditioning["atom_enc_bias"].float(),
             to_keys=diffusion_conditioning["to_keys"],
-            r=r_noisy,  # Float['b m 3'],
+            r=r_noisy,  # Float['bs m 3'],
             multiplicity=multiplicity,
         )
 
@@ -252,7 +273,7 @@ class AtomDiffusion(Module):
 
     def preconditioned_network_forward(
         self,
-        noised_atom_coords,  #: Float['b m 3'],
+        noised_atom_coords,  #: Float['bs m 3'],
         sigma,  #: Float['b'] | Float[' '] | float,
         network_condition_kwargs: dict,
     ):
@@ -310,10 +331,25 @@ class AtomDiffusion(Module):
         ):
             potentials = get_potentials(steering_args, boltz2=True)
 
+        batch_size = atom_mask.shape[0]
         if steering_args["fk_steering"]:
             multiplicity = multiplicity * steering_args["num_particles"]
-            energy_traj = torch.empty((multiplicity, 0), device=self.device)
-            resample_weights = torch.ones(multiplicity, device=self.device).reshape(
+        if max_parallel_samples is None:
+            max_parallel_samples = multiplicity
+
+        num_sampling_steps = default(num_sampling_steps, self.num_sampling_steps)
+        atom_mask = atom_mask.repeat_interleave(multiplicity, 0)
+        total_samples = atom_mask.shape[0]
+        sample_id_chunks = _get_sample_id_chunks(
+            batch_size=batch_size,
+            multiplicity=multiplicity,
+            max_parallel_samples=max_parallel_samples,
+            device=self.device,
+        )
+
+        if steering_args["fk_steering"]:
+            energy_traj = torch.empty((total_samples, 0), device=self.device)
+            resample_weights = torch.ones(total_samples, device=self.device).reshape(
                 -1, steering_args["num_particles"]
             )
         if (
@@ -321,15 +357,10 @@ class AtomDiffusion(Module):
             or steering_args["contact_guidance_update"]
         ):
             scaled_guidance_update = torch.zeros(
-                (multiplicity, *atom_mask.shape[1:], 3),
+                (total_samples, *atom_mask.shape[1:], 3),
                 dtype=torch.float32,
                 device=self.device,
             )
-        if max_parallel_samples is None:
-            max_parallel_samples = multiplicity
-
-        num_sampling_steps = default(num_sampling_steps, self.num_sampling_steps)
-        atom_mask = atom_mask.repeat_interleave(multiplicity, 0)
 
         shape = (*atom_mask.shape, 3)
 
@@ -351,7 +382,7 @@ class AtomDiffusion(Module):
         # gradually denoise
         for step_idx, (sigma_tm, sigma_t, gamma) in enumerate(sigmas_and_gammas):
             random_R, random_tr = compute_random_augmentation(
-                multiplicity, device=atom_coords.device, dtype=atom_coords.dtype
+                atom_coords.shape[0], device=atom_coords.device, dtype=atom_coords.dtype
             )
             atom_coords = atom_coords - atom_coords.mean(dim=-2, keepdims=True)
             atom_coords = (
@@ -381,15 +412,13 @@ class AtomDiffusion(Module):
 
             with torch.no_grad():
                 atom_coords_denoised = torch.zeros_like(atom_coords_noisy)
-                sample_ids = torch.arange(multiplicity, device=atom_coords_noisy.device)
-                sample_ids_chunks = sample_ids.split(max_parallel_samples)
-
-                for sample_ids_chunk in sample_ids_chunks:
+                for sample_ids_chunk in sample_id_chunks:
+                    chunk_multiplicity = sample_ids_chunk.numel() // batch_size
                     atom_coords_denoised_chunk = self.preconditioned_network_forward(
                         atom_coords_noisy[sample_ids_chunk],
                         t_hat,
                         network_condition_kwargs=dict(
-                            multiplicity=sample_ids_chunk.numel(),
+                            multiplicity=chunk_multiplicity,
                             **network_condition_kwargs,
                         ),
                     )
@@ -403,7 +432,7 @@ class AtomDiffusion(Module):
                     or step_idx == num_sampling_steps - 1
                 ):
                     # Compute energy of x_0 prediction
-                    energy = torch.zeros(multiplicity, device=self.device)
+                    energy = torch.zeros(total_samples, device=self.device)
                     for potential in potentials:
                         parameters = potential.compute_parameters(steering_t)
                         if parameters["resampling_weight"] > 0:

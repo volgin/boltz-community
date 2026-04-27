@@ -1080,6 +1080,15 @@ def _parse_devices(value: str) -> Union[int, List[int]]:
     default=2,
 )
 @click.option(
+    "--batch_size",
+    type=click.IntRange(min=1),
+    help=(
+        "The number of inputs to process per batch during Boltz-2 structure "
+        "prediction. Affinity prediction remains batch_size=1."
+    ),
+    default=1,
+)
+@click.option(
     "--override",
     is_flag=True,
     help="Override existing found predictions.",
@@ -1229,6 +1238,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     write_full_pde: bool,
     output_format: Literal["pdb", "mmcif"],
     num_workers: int,
+    batch_size: int,
     override: bool,
     skip_bad_inputs: bool,
     seed: Optional[int],
@@ -1281,6 +1291,21 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     if accelerator == "cpu":
         msg = "Running on CPU, this will be slow. Consider using a GPU."
         click.echo(msg)
+
+    if batch_size > 1 and model != "boltz2":
+        raise click.UsageError(
+            "Batched structure inference is only supported for Boltz-2."
+        )
+    if batch_size > 1 and use_potentials:
+        raise click.UsageError(
+            "Batched structure inference with --use_potentials is not supported yet."
+        )
+    if batch_size > 1:
+        click.echo(
+            "Warning: contact guidance is not yet supported with batched "
+            "Boltz-2 structure inference; running without it. Use "
+            "--batch_size 1 for guided inference."
+        )
 
     # MPS (Apple Silicon) validation and info
     if accelerator == "mps":
@@ -1516,6 +1541,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
                 msa_dir=processed.msa_dir,
                 mol_dir=mol_dir,
                 num_workers=num_workers,
+                batch_size=batch_size,
                 constraints_dir=processed.constraints_dir,
                 template_dir=processed.template_dir,
                 extra_mols_dir=processed.extra_mols_dir,
@@ -1553,6 +1579,9 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         steering_args = BoltzSteeringParams()
         steering_args.fk_steering = use_potentials
         steering_args.physical_guidance_update = use_potentials
+        # Contact guidance assumes per-record sequential inference today, so
+        # keep it disabled for batched structure prediction until that path is audited.
+        steering_args.contact_guidance_update = batch_size == 1
 
         model_cls = Boltz2 if model == "boltz2" else Boltz1
         if model == "boltz2":
@@ -1617,6 +1646,8 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             msa_dir=processed.msa_dir,
             mol_dir=mol_dir,
             num_workers=num_workers,
+            # Keep affinity single-record until the batched affinity path is audited.
+            batch_size=1,
             constraints_dir=processed.constraints_dir,
             template_dir=processed.template_dir,
             extra_mols_dir=processed.extra_mols_dir,

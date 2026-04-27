@@ -38,6 +38,43 @@ class TestSubsampleMsaDefault:
         pytest.fail("subsample_msa parameter not found on predict command")
 
 
+class TestBatchSizeOption:
+    """The --batch_size CLI option must preserve the intended constraints."""
+
+    def test_default_is_one(self):
+        for param in predict.params:
+            if param.name == "batch_size":
+                assert param.default == 1
+                return
+        pytest.fail("batch_size parameter not found on predict command")
+
+    def test_rejects_batched_potentials(self, tmp_path):
+        input_path = tmp_path / "input.yaml"
+        input_path.write_text("version: 1\nsequences: []\n")
+        with pytest.raises(
+            click.UsageError,
+            match="Batched structure inference with --use_potentials is not supported yet.",
+        ):
+            predict.main(
+                args=[str(input_path), "--batch_size", "2", "--use_potentials"],
+                prog_name="predict",
+                standalone_mode=False,
+            )
+
+    def test_rejects_batched_non_boltz2(self, tmp_path):
+        input_path = tmp_path / "input.yaml"
+        input_path.write_text("version: 1\nsequences: []\n")
+        with pytest.raises(
+            click.UsageError,
+            match="Batched structure inference is only supported for Boltz-2.",
+        ):
+            predict.main(
+                args=[str(input_path), "--batch_size", "2", "--model", "boltz1"],
+                prog_name="predict",
+                standalone_mode=False,
+            )
+
+
 class TestAvailableCpuCount:
     """_available_cpu_count must respect cgroup/taskset limits."""
 
